@@ -81,6 +81,8 @@ export interface Train {
   passengers: Passenger[];
   /** minuti di gioco di guasto residui */
   brokenFor: number;
+  /** minuti già trattenuti in stazione per regolare la distanza (assente se in viaggio) */
+  held?: number;
 }
 
 export type EventKind = 'breakdown' | 'flood' | 'peak' | 'works';

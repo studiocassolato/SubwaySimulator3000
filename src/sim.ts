@@ -10,6 +10,8 @@ import { SITE_ORDER, makeStation } from './world';
 
 /** Passeggeri generati per punto di densità al minuto (prima dei moltiplicatori orari). */
 const DEMAND_K = 0.006;
+/** massimo di minuti che un treno aspetta in stazione per ritrovare la distanza dal precedente */
+const MAX_HOLD = 12;
 
 export type Notify = (text: string, kind?: 'info' | 'good' | 'bad') => void;
 
@@ -209,7 +211,24 @@ export class Game {
   addTrain(lineId: number) {
     const line = this.state.lines.find((l) => l.id === lineId);
     if (!line || !this.spend(COST.train, 'un nuovo treno')) return;
-    this.state.trains.push(this.makeTrain(line));
+    const others = this.state.trains.filter((t) => t.lineId === line.id);
+    const t = this.makeTrain(line);
+    if (others.length) {
+      // il nuovo treno entra a metà del buco più grande tra i treni esistenti
+      const cycle = this.cycle(line);
+      const phases = others.map((o) => this.phase(o, line)).sort((a, b) => a - b);
+      let best = 0;
+      let at = 0;
+      phases.forEach((p, i) => {
+        const gap = i + 1 < phases.length ? phases[i + 1] - p : phases[0] + cycle - p;
+        if (gap > best) {
+          best = gap;
+          at = p + gap / 2;
+        }
+      });
+      this.placeAtPhase(t, line, at % cycle);
+    }
+    this.state.trains.push(t);
     this.onChange();
   }
 
@@ -238,6 +257,63 @@ export class Game {
     };
   }
 
+  /** Lunghezza di un giro completo (andata e ritorno) della linea. */
+  private cycle(line: Line): number {
+    const g = this.net.geom.get(line.id)!;
+    return 2 * g.stationDist[g.stationDist.length - 1];
+  }
+
+  /** Posizione del treno sul giro completo: l'andata va da 0 a L, il ritorno da L a 2L. */
+  private phase(t: Train, line: Line): number {
+    const c = this.cycle(line);
+    return t.dir === 1 ? t.pos : c - t.pos;
+  }
+
+  /** Mette il treno nel punto del giro indicato, diretto alla fermata successiva. */
+  private placeAtPhase(t: Train, line: Line, phase: number) {
+    const g = this.net.geom.get(line.id)!;
+    const c = this.cycle(line);
+    const last = g.stationDist.length - 1;
+    t.dir = phase < c / 2 ? 1 : -1;
+    t.pos = t.dir === 1 ? phase : c - phase;
+    if (t.dir === 1) {
+      const i = g.stationDist.findIndex((d) => d >= t.pos);
+      t.target = i < 0 ? last : i;
+    } else {
+      let i = 0;
+      g.stationDist.forEach((d, k) => {
+        if (d <= t.pos) i = k;
+      });
+      t.target = i;
+    }
+    t.dwell = 0;
+    t.held = undefined;
+  }
+
+  /** Ridistribuisce i treni della linea a distanze uguali, mantenendo l'ordine. */
+  private respace(line: Line) {
+    const trains = this.state.trains.filter((t) => t.lineId === line.id);
+    if (!trains.length) return;
+    const c = this.cycle(line);
+    const sorted = trains.map((t) => ({ t, p: this.phase(t, line) })).sort((a, b) => a.p - b.p);
+    const base = sorted[0].p;
+    sorted.forEach(({ t }, k) => this.placeAtPhase(t, line, (base + (k * c) / sorted.length) % c));
+  }
+
+  /** Distanza, lungo il giro, dal treno che precede sulla stessa linea. */
+  private gapAhead(t: Train, line: Line): number {
+    const c = this.cycle(line);
+    const me = this.phase(t, line);
+    let best = c;
+    for (const o of this.state.trains) {
+      if (o === t || o.lineId !== t.lineId) continue;
+      let gap = (((this.phase(o, line) - me) % c) + c) % c;
+      if (gap === 0) gap = o.id < t.id ? 0 : c;
+      best = Math.min(best, gap);
+    }
+    return best;
+  }
+
   private snapshotTrains(line: Line) {
     return this.state.trains
       .filter((t) => t.lineId === line.id)
@@ -263,6 +339,8 @@ export class Game {
       t.pos = g.stationDist[idx];
       t.dwell = 0;
     }
+    // la linea è cambiata: si riparte con i treni a distanze uguali
+    this.respace(line);
     this.onChange();
   }
 
@@ -342,6 +420,16 @@ export class Game {
       t.dwell -= dt;
       return;
     }
+    if (t.held !== undefined) {
+      // regolazione: se il treno precedente è troppo vicino si aspetta un po' in stazione
+      const n = this.state.trains.filter((o) => o.lineId === line.id).length;
+      if (n > 1 && t.held < MAX_HOLD && this.gapAhead(t, line) < (0.9 * this.cycle(line)) / n) {
+        t.held += 1;
+        t.dwell = 1;
+        return;
+      }
+      t.held = undefined;
+    }
     let speed = TRAIN_SPEED;
     if (this.activeEvents('flood').length && this.net.lineHasTunnel(line.id)) speed *= 0.35;
     let budget = speed * dt;
@@ -367,6 +455,7 @@ export class Game {
     const st = this.net.stationById.get(line.stations[i]);
     const next = line.stations[t.target];
     if (!st || next === undefined) return;
+    t.held = 0;
     if (this.activeEvents('works').some((e) => e.stationId === st.id)) return; // fermata chiusa: transita
 
     let moved = 0;
@@ -437,6 +526,8 @@ export class Game {
     this.maybeRequest();
     // ogni mattina il sindaco approva una nuova stazione
     if (Math.floor(s.time / 60) % 24 === 6 && s.time > 1440) this.approveStation();
+    // di notte, con poca gente in giro, le linee ripartono con i treni equidistanziati
+    if (Math.floor(s.time / 60) % 24 === 3) for (const line of s.lines) this.respace(line);
     this.onChange();
   }
 
