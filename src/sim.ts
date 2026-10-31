@@ -1,7 +1,7 @@
 import {
   BUYBACK_FROM, COMPENSATION_BELOW, COMPENSATION_PER_POINT, COST, CRISIS_FINE, DISCONTENT_MINUTES, DONATION_BASE,
   DONATION_REP, SEIZE_BELOW, DWELL, FARE_BASE, FARE_PER_HOP, GRANT_PER_REP, LEVELS, LINE_COLORS, MAX_WAIT,
-  MIN_REP_FOR_STATIONS, OVERCROWD_AT, OVERCROWD_LIMIT, costMult, fareShare, POP_PER_DENSITY, RAMP_DAYS, STATION_CAPACITY, TRAIN_SPEED, ZONES, ZONE_TYPES,
+  MIN_REP_FOR_STATIONS, demandMult, stationUpkeep, trainUpkeep, OVERCROWD_AT, OVERCROWD_LIMIT, costMult, fareShare, POP_PER_DENSITY, RAMP_DAYS, STATION_CAPACITY, TRAIN_SPEED, ZONES, ZONE_TYPES,
   demandProfile,
 } from './config';
 import { Network } from './network';
@@ -508,7 +508,7 @@ export class Game {
         const c = byId.get(cid)!;
         if (!c.density) continue;
         const prof = demandProfile(c.type, hour);
-        let rate = c.density * prof.rate * DEMAND_K * dt * ramp;
+        let rate = c.density * prof.rate * DEMAND_K * demandMult(s.level) * dt * ramp;
         if (peaks.has(c.id)) rate *= 5;
         if (Math.random() >= rate) continue;
         const dest = pickWeighted(prof.dest);
@@ -856,7 +856,7 @@ export class Game {
   private daily() {
     const s = this.state;
     const myTrains = s.trains.filter((t) => !s.lines.find((l) => l.id === t.lineId)?.seized).length;
-    const upkeep = myTrains * COST.trainUpkeepPerDay + s.stations.length * COST.stationUpkeepPerDay;
+    const upkeep = myTrains * trainUpkeep(s.level) + s.stations.length * stationUpkeep(s.level);
     s.money -= upkeep;
     s.stats.expensesToday += upkeep;
     // il sindaco giudica il servizio della giornata: copertura delle stazioni e soddisfazione

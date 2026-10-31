@@ -1,7 +1,7 @@
 import './style.css';
 import { Camera } from './camera';
 import {
-  BUYBACK_FROM, COMPENSATION_BELOW, COMPENSATION_PER_POINT, COST, DONATION_REP, GRANT_PER_REP, LEVELS, MIN_REP_FOR_STATIONS, SEIZE_BELOW, OVERCROWD_LIMIT, ZONES, ZONE_TYPES, costMult, fareShare,
+  BUYBACK_FROM, COMPENSATION_BELOW, COMPENSATION_PER_POINT, COST, DONATION_REP, GRANT_PER_REP, LEVELS, MIN_REP_FOR_STATIONS, SEIZE_BELOW, OVERCROWD_LIMIT, ZONES, ZONE_TYPES, costMult, fareShare, stationUpkeep, trainUpkeep,
 } from './config';
 import { Input } from './input';
 import { Music, type MusicStyle } from './music';
@@ -394,7 +394,7 @@ function linesHtml(): string {
   });
   return `<h3>Linee ${s.lines.length}/${game.levelInfo.maxLines}</h3>
     ${rows.length ? rows.join('') : '<p class="muted">Nessuna linea ancora. Trascina da una stazione all\'altra per aprirne una.</p>'}
-    <p class="muted">Manutenzione giornaliera: ${fmtMoney(COST.trainUpkeepPerDay)} per treno, ${fmtMoney(COST.stationUpkeepPerDay)} per stazione.</p>`;
+    <p class="muted">Manutenzione giornaliera: ${fmtMoney(trainUpkeep(s.level))} per treno, ${fmtMoney(stationUpkeep(s.level))} per stazione (cresce col livello).</p>`;
 }
 
 function goalsHtml(): string {
