@@ -306,17 +306,24 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(angle);
-    const w = px(26);
+    const cars = line.cars ?? 1;
+    const carW = px(26);
+    const gap = px(2);
+    const w = carW * cars + gap * (cars - 1);
     const h = px(13);
-    roundRect(ctx, -w / 2, -h / 2, w, h, px(3));
-    ctx.fillStyle = t.brokenFor > 0 ? '#555' : line.seized ? '#8a8f98' : line.color;
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = px(1.5);
-    ctx.stroke();
-    t.passengers.slice(0, 12).forEach((pa, i) => {
-      const col = i % 6;
-      const row = Math.floor(i / 6);
+    for (let k = 0; k < cars; k++) {
+      roundRect(ctx, -w / 2 + k * (carW + gap), -h / 2, carW, h, px(3));
+      ctx.fillStyle = t.brokenFor > 0 ? '#555' : line.seized ? '#8a8f98' : line.color;
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = px(1.5);
+      ctx.stroke();
+    }
+    t.passengers.slice(0, 12 * cars).forEach((pa, i) => {
+      const car = Math.floor(i / 12);
+      const j = i % 12;
+      const col = (j % 6) + car * ((carW + gap) / px(4));
+      const row = Math.floor(j / 6);
       ctx.fillStyle = ZONES[pa.dest].color;
       ctx.beginPath();
       ctx.arc(-w / 2 + px(3) + col * px(4), -h / 2 + px(3.5) + row * px(5.5), px(1.7), 0, Math.PI * 2);
