@@ -95,3 +95,15 @@ export function demandProfile(origin: ZoneType, hour: number): Profile {
   return { rate: 0.2, dest: { residential: 1, offices: 1 } };
 }
 
+
+/** passeggeri in attesa oltre i quali parte il conto alla rovescia del sovraffollamento */
+export const OVERCROWD_AT = 14;
+/** minuti di sovraffollamento continuato prima della crisi di quartiere */
+export const OVERCROWD_LIMIT = 120;
+/** giorni perché una stazione nuova arrivi a piena domanda */
+export const RAMP_DAYS = 1.5;
+/** minuti perché il malcontento di una stazione scollegata arrivi al massimo */
+export const DISCONTENT_MINUTES = { easy: 1440 * 4, normal: 1440 * 2.5 };
+/** contributo comunale giornaliero per punto di reputazione */
+export const GRANT_PER_REP = 30;
+export const INITIAL_STATIONS = 12;

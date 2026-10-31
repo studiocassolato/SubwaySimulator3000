@@ -1,9 +1,29 @@
-import { CELL } from './config';
+import { CELL, INITIAL_STATIONS } from './config';
 import { rng } from './geometry';
-import { CENTRAL_PARK, CORES, SEEDS, WORLD_H, WORLD_W, landAt, pointInPoly } from './nyc';
-import type { Cell, GameState, Vec, ZoneType } from './types';
+import { CENTRAL_PARK, CORES, SEEDS, WORLD_H, WORLD_W, landAt, pointInPoly, type Seed } from './nyc';
+import type { Cell, GameState, Station, Vec, ZoneType } from './types';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
+
+const coreDist = (p: Vec) => Math.min(...CORES.map((k) => Math.hypot(k.x - p.x, k.y - p.y)));
+
+/**
+ * Ordine in cui il sindaco approva le stazioni: prima i quartieri centrali,
+ * poi via via quelli più lontani. Deterministico, così non va salvato.
+ */
+export const SITE_ORDER: Seed[] = (() => {
+  const out: Seed[] = [];
+  for (const s of [...SEEDS].sort((a, b) => coreDist(a) - coreDist(b))) {
+    if (!landAt(s)) continue;
+    if (out.some((o) => Math.hypot(o.x - s.x, o.y - s.y) < 160)) continue;
+    out.push(s);
+  }
+  return out;
+})();
+
+export function makeStation(id: number, site: Seed): Station {
+  return { id, x: site.x, y: site.y, name: site.name, waiting: [], served: 0, crowd: 0, discontent: 0 };
+}
 
 /** Distanza minima di un punto dal bordo dell'acqua (approssimata a campioni). */
 function nearWater(c: Vec, r: number): boolean {
@@ -43,7 +63,7 @@ export function newGame(seed = Math.floor(Math.random() * 1e9)): GameState {
         if (best > 1.3) type = 'residential';
       }
 
-      const core = Math.min(...CORES.map((k) => Math.hypot(k.x - c.x, k.y - c.y)));
+      const core = coreDist(c);
       const manhattan = land.name === 'MANHATTAN';
       let density: number;
       if (core < 500) density = manhattan ? 4 : 3;
@@ -57,31 +77,40 @@ export function newGame(seed = Math.floor(Math.random() * 1e9)): GameState {
     }
   }
 
+  const stations = SITE_ORDER.slice(0, INITIAL_STATIONS).map((s, i) => makeStation(i + 1, s));
   return {
     version: SAVE_VERSION,
     seed,
     cityName: 'New York',
     time: 6 * 60,
-    money: 8000,
+    money: 5000,
     satisfaction: 70,
+    reputation: 60,
     level: 1,
     mapId: 'nyc',
     cells,
-    stations: [],
+    stations,
     lines: [],
     trains: [],
     events: [],
+    requests: [],
+    nextSite: INITIAL_STATIONS,
     goalsDone: [],
-    log: [{ t: 6 * 60, text: 'Benvenuto a New York! Piazza le stazioni e collegale con le linee.' }],
+    log: [{ t: 6 * 60, text: 'Benvenuto a New York! Il sindaco ha approvato le prime stazioni: collegale con le linee.' }],
     stats: { delivered: 0, lost: 0, incomeToday: 0, expensesToday: 0, lastDayIncome: 0, lastDayExpenses: 0 },
     difficulty: 'easy',
-    nextId: 1,
+    nextId: INITIAL_STATIONS + 1,
   };
 }
 
-export function nearestSeedName(p: Vec, used: Set<string>): string {
-  const sorted = [...SEEDS].sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
-  for (const s of sorted.slice(0, 3)) if (!used.has(s.name)) return s.name;
-  const base = sorted[0].name;
-  for (let n = 2; ; n++) if (!used.has(`${base} ${n}`)) return `${base} ${n}`;
+/** Porta un salvataggio della prima versione al formato attuale. */
+export function migrate(s: GameState): GameState {
+  if (s.version === 1) {
+    s.reputation = 60;
+    s.requests = [];
+    s.nextSite = INITIAL_STATIONS;
+    for (const st of s.stations) Object.assign(st, { crowd: 0, discontent: 0, openedAt: 0 });
+    s.version = SAVE_VERSION;
+  }
+  return s;
 }

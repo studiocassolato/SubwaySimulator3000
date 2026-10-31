@@ -1,5 +1,5 @@
 import type { GameState } from './types';
-import { SAVE_VERSION } from './world';
+import { SAVE_VERSION, migrate } from './world';
 
 export type SlotId = 'auto' | 'slot1' | 'slot2' | 'slot3';
 export const SLOTS: SlotId[] = ['auto', 'slot1', 'slot2', 'slot3'];
@@ -43,7 +43,9 @@ export async function save(slot: SlotId, state: GameState) {
 }
 
 export async function load(slot: SlotId): Promise<SaveRecord | undefined> {
-  return tx('readonly', (s) => s.get(slot) as IDBRequest<SaveRecord | undefined>);
+  const rec = await tx('readonly', (s) => s.get(slot) as IDBRequest<SaveRecord | undefined>);
+  if (rec) rec.state = migrate(rec.state);
+  return rec;
 }
 
 export async function list(): Promise<SaveRecord[]> {
@@ -61,7 +63,7 @@ export function exportFile(state: GameState) {
 }
 
 export async function importFile(file: File): Promise<GameState> {
-  const data = JSON.parse(await file.text()) as GameState;
+  const data = migrate(JSON.parse(await file.text()) as GameState);
   if (!data || data.version !== SAVE_VERSION || !Array.isArray(data.cells) || !Array.isArray(data.lines)) {
     throw new Error('File di salvataggio non valido');
   }

@@ -1,7 +1,7 @@
 import './style.css';
 import { Camera } from './camera';
-import { COST, LEVELS, ZONES, ZONE_TYPES } from './config';
-import { Input, type Tool } from './input';
+import { COST, GRANT_PER_REP, LEVELS, OVERCROWD_LIMIT, ZONES, ZONE_TYPES } from './config';
+import { Input } from './input';
 import { Music, type MusicStyle } from './music';
 import { landAt, WORLD_H, WORLD_W } from './nyc';
 import { render, type Selection } from './render';
@@ -79,7 +79,6 @@ function frame(now: number) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   render(ctx, game, cam, {
     selection: input.selection, drag: input.drag, hoverStation: input.hoverStation,
-    placing: input.tool === 'station' ? input.placing : null, tool: input.tool,
   });
   requestAnimationFrame(frame);
 }
@@ -107,6 +106,8 @@ function updateTopbar() {
   const pct = next ? Math.min(100, ((pop - cur.population) / (next.population - cur.population)) * 100) : 100;
   $('#level').innerHTML = `Liv. ${s.level}<span class="bar"><i style="width:${Math.max(0, pct)}%"></i></span>`;
   $('#satisfaction').innerHTML = `😊 ${Math.round(s.satisfaction)}%`;
+  $('#reputation').innerHTML = `🏛️ ${Math.round(s.reputation)}`;
+  updateRequests();
   document.querySelectorAll<HTMLButtonElement>('.speed button').forEach((b) => {
     b.classList.toggle('active', Number(b.dataset.speed) === game.speed);
   });
@@ -126,28 +127,49 @@ $('#btn-music').addEventListener('click', () => {
 });
 $('#btn-menu').addEventListener('click', () => openMenu());
 
-document.querySelectorAll<HTMLButtonElement>('.tools button').forEach((b) =>
-  b.addEventListener('click', () => setTool(b.dataset.tool as Tool)),
-);
-function setTool(t: Tool) {
-  input.setTool(t);
-  document.querySelectorAll<HTMLButtonElement>('.tools button').forEach((x) => x.classList.toggle('active', x.dataset.tool === t));
-  if (t === 'station') toast(`Tocca la mappa per costruire una stazione (${fmtMoney(COST.station)})`);
-}
-
 window.addEventListener('keydown', (e) => {
   if ((e.target as HTMLElement).closest('input, select, dialog')) return;
   if (e.code === 'Space') game.speed = game.speed ? 0 : 1;
   else if (e.key === '1') game.speed = 1;
   else if (e.key === '2') game.speed = 3;
   else if (e.key === '3') game.speed = 8;
-  else if (e.key === 'l') setTool('line');
-  else if (e.key === 's') setTool('station');
-  else if (e.key === 'd') setTool('demolish');
   else if (e.key === 'Escape') input.select(null);
   else return;
   e.preventDefault();
   updateTopbar();
+});
+
+// ---------- richieste del sindaco, sempre in vista ----------
+function hoursLeft(deadline: number) {
+  const m = Math.max(0, deadline - game.state.time);
+  return m >= 1440 ? `${Math.floor(m / 1440)}g ${Math.floor((m % 1440) / 60)}h` : `${Math.floor(m / 60)}h ${String(Math.floor(m % 60)).padStart(2, '0')}m`;
+}
+let lastReq = '';
+function updateRequests() {
+  const html = game.state.requests.map((r) => {
+    const late = r.deadline - game.state.time < 360;
+    const pct = Math.min(100, (r.progress / r.target) * 100);
+    return `<div class="req ${late ? 'late' : ''}" data-req="${r.id}"><span class="time">⏱ ${hoursLeft(r.deadline)}</span>
+      <b>🏛️ ${r.title}</b><span class="muted">Premio $${r.reward} · fiducia +${r.rep}${r.kind === 'deliver' ? ` · ${r.progress}/${r.target}` : ''}</span>
+      ${r.kind === 'deliver' ? `<div class="meter"><i style="width:${pct}%"></i></div>` : ''}</div>`;
+  }).join('');
+  if (html === lastReq) return;
+  lastReq = html;
+  $('#requests').innerHTML = html;
+}
+$('#requests').addEventListener('click', (e) => {
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-req]');
+  const r = el && game.state.requests.find((x) => x.id === Number(el.dataset.req));
+  const st = r?.stationId !== undefined ? game.net.stationById.get(r.stationId) : undefined;
+  if (st) {
+    cam.x = st.x;
+    cam.y = st.y;
+    input.select({ kind: 'station', id: st.id });
+  } else {
+    tab = 'goals';
+    setSheet(true);
+    renderPanel(true);
+  }
 });
 
 // ---------- notifiche ----------
@@ -169,8 +191,7 @@ input.onQuote = (text) => {
 input.onSelect = (s: Selection) => {
   if (s) {
     tab = 'info';
-    // mentre si costruiscono stazioni il foglio resta chiuso per non coprire la mappa
-    if (input.tool !== 'station') setSheet(true);
+    setSheet(true);
   }
   renderPanel(true);
 };
@@ -178,10 +199,9 @@ game.onChange = () => renderPanel();
 
 // ---------- pannello laterale / foglio dal basso ----------
 const panel = $('#panel');
-const tools = $('.tools');
 function setSheet(open: boolean) {
   panel.classList.toggle('collapsed', !open);
-  tools.classList.toggle('low', !open);
+  document.body.classList.toggle('sheet-closed', !open);
 }
 $('#sheet-handle').addEventListener('click', () => setSheet(panel.classList.contains('collapsed')));
 if (window.matchMedia('(max-width: 760px)').matches) setSheet(false);
@@ -216,16 +236,24 @@ function infoHtml(): string {
     const lines = game.net.linesAt.get(st.id) ?? [];
     const unmet = [...(game.unmet.get(st.id) ?? new Map()).entries()].sort((a, b) => b[1] - a[1]);
     const closed = s.events.some((e) => e.kind === 'works' && e.stationId === st.id);
+    const linked = lines.length > 0;
+    const frozen = st.frozenUntil && s.time < st.frozenUntil;
+    const urgency = !linked
+      ? `<div class="hint">📣 <b>Malcontento ${Math.round(st.discontent)}%</b><br>I residenti aspettano la metro. Al 100% protestano e la fiducia del sindaco cala.</div>`
+      : st.crowd > 0
+        ? `<div class="hint">🚨 <b>Sovraffollamento ${Math.round((st.crowd / OVERCROWD_LIMIT) * 100)}%</b><br>Troppa gente in attesa: aggiungi treni o un'altra linea prima che scatti la crisi.</div>`
+        : '';
     return `
       <h3>Ⓜ ${st.name}</h3>
       <p class="muted">${landAt(st)?.name ?? ''}${closed ? ' · 🚧 chiusa per lavori' : ''}</p>
-      <p><b>${st.waiting.length}</b> passeggeri in attesa</p>
+      <p><b>${st.waiting.length}</b> passeggeri in attesa${frozen ? ' · 🧊 crescita ferma dopo una crisi' : ''}</p>
+      ${urgency}
       <h4>Zone servite a piedi</h4>
       <div>${serves.length ? serves.map((t) => zoneChip(t)).join('') : '<span class="muted">Nessuna zona edificata vicina</span>'}</div>
       <h4>Linee</h4>
       ${lines.length ? lines.map((l) => `<div class="row"><span class="swatch" style="background:${l.color}"></span><span class="grow">${l.name}</span><button class="btn small" data-action="select-line" data-id="${l.id}">Apri</button></div>`).join('') : '<p class="muted">Nessuna linea. Trascina da questa stazione a un\'altra per crearne una.</p>'}
       ${unmet.length ? `<div class="hint"><b>Domanda non servita</b><br>Persone che vorrebbero partire da qui ma non hanno un percorso:<br>${unmet.slice(0, 5).map(([t, n]) => zoneChip(t, ` · ${n}`)).join('')}</div>` : ''}
-      <div class="btns"><button class="btn danger" data-action="remove-station" data-id="${st.id}">Demolisci (+${fmtMoney(COST.station / 2)})</button></div>`;
+`;
   }
   if (sel?.kind === 'line') {
     const line = s.lines.find((l) => l.id === sel.id);
@@ -267,10 +295,11 @@ function helpHtml(): string {
   const st = game.state.stats;
   return `
     <h3>Come si gioca</h3>
-    <p>1. Scegli <b>Stazione</b> e tocca la mappa per costruirne una (${fmtMoney(COST.station)}).</p>
-    <p>2. Con <b>Linee</b> trascina da una stazione all'altra: passando sopra più stazioni le colleghi in fila.</p>
+    <p>1. Le stazioni le decide il <b>sindaco</b>: ne trovi già alcune e ogni mattina ne approva una nuova.</p>
+    <p>2. Tu costruisci le <b>linee</b>: trascina da una stazione all'altra, passando sopra più stazioni le colleghi in fila. I soldi non bastano per tutte: scegli bene.</p>
     <p>3. I passeggeri (pallini colorati) vanno verso il tipo di zona del loro colore. Ogni viaggio completato è un incasso.</p>
     <p>4. Le zone servite bene crescono. Più abitanti servi, più sali di livello e sblocchi linee e treni più capienti.</p>
+    <p>5. <b>Attenzione:</b> le stazioni scollegate accumulano malcontento, quelle sovraffollate rischiano la crisi, e il sindaco fa richieste a tempo. La sua fiducia (🏛️) decide il contributo giornaliero del Comune (${fmtMoney(GRANT_PER_REP)} per punto).</p>
     <p class="muted">Attraversare fiumi e baie richiede una galleria (${fmtMoney(COST.tunnel)}). Trascina per spostare la mappa, pizzica o usa la rotella per lo zoom.</p>
     <h4>Zone</h4>
     <div class="legend">${ZONE_TYPES.map((t) => `<div><span class="dot" style="background:${ZONES[t].color}"></span> ${ZONES[t].icon} ${ZONES[t].label}</div>`).join('')}</div>
@@ -290,7 +319,7 @@ function linesHtml(): string {
       <button class="btn small" data-action="select-line" data-id="${l.id}">Apri</button></div>`;
   });
   return `<h3>Linee ${s.lines.length}/${game.levelInfo.maxLines}</h3>
-    ${rows.length ? rows.join('') : '<p class="muted">Nessuna linea ancora. Costruisci due stazioni e trascina dall\'una all\'altra.</p>'}
+    ${rows.length ? rows.join('') : '<p class="muted">Nessuna linea ancora. Trascina da una stazione all\'altra per aprirne una.</p>'}
     <p class="muted">Manutenzione giornaliera: ${fmtMoney(COST.trainUpkeepPerDay)} per treno, ${fmtMoney(COST.stationUpkeepPerDay)} per stazione.</p>`;
 }
 
@@ -301,6 +330,9 @@ function goalsHtml(): string {
   return `<h3>Livello ${s.level}</h3>
     <p>Abitanti serviti: <b>${pop.toLocaleString('it-IT')}</b>${next ? ` / ${next.population.toLocaleString('it-IT')} per il livello ${s.level + 1}` : ''}</p>
     ${next ? `<p class="muted">Prossimo: ${next.unlock}</p>` : '<p class="muted">Livello massimo del prototipo raggiunto!</p>'}
+    <h4>Richieste del sindaco</h4>
+    ${s.requests.length ? s.requests.map((r) => `<div class="row"><span>🏛️</span><span class="grow">${r.title}<br><small class="muted">⏱ ${hoursLeft(r.deadline)} · ${r.kind === 'deliver' ? `${r.progress}/${r.target} · ` : ''}+${fmtMoney(r.reward)}</small></span></div>`).join('') : '<p class="muted">Nessuna richiesta al momento.</p>'}
+    <p class="muted">Fiducia del sindaco: <b>${Math.round(s.reputation)}</b>/100 → contributo di ${fmtMoney(s.reputation * GRANT_PER_REP)} al giorno.</p>
     <h4>Obiettivi</h4>
     ${GOALS.map((g) => {
       const done = s.goalsDone.includes(g.id);
@@ -320,7 +352,6 @@ $('#panel-body').addEventListener('click', (e) => {
   const id = Number(b.dataset.id);
   switch (b.dataset.action) {
     case 'select-line': input.select({ kind: 'line', id }); break;
-    case 'remove-station': game.removeStation(id); input.select(null); break;
     case 'train-add': game.addTrain(id); break;
     case 'train-remove': game.removeTrain(id); break;
     case 'unlink': game.removeStationFromLine(Number(b.dataset.line), id); break;

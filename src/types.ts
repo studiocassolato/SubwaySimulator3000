@@ -39,6 +39,27 @@ export interface Station {
   waiting: Passenger[];
   /** contatore passeggeri consegnati qui, usato per la crescita */
   served: number;
+  /** minuto in cui la stazione è stata collegata per la prima volta */
+  openedAt?: number;
+  /** minuti accumulati di sovraffollamento (crisi a OVERCROWD_LIMIT) */
+  crowd: number;
+  /** malcontento 0-100 dei residenti finché la stazione non è collegata */
+  discontent: number;
+  /** fino a quando la crescita del quartiere è bloccata dopo una crisi */
+  frozenUntil?: number;
+}
+
+export interface MayorRequest {
+  id: number;
+  kind: 'connect' | 'deliver';
+  title: string;
+  stationId?: number;
+  zone?: ZoneType;
+  target: number;
+  progress: number;
+  deadline: number;
+  reward: number;
+  rep: number;
 }
 
 export interface Line {
@@ -93,6 +114,8 @@ export interface GameState {
   time: number;
   money: number;
   satisfaction: number;
+  /** fiducia del sindaco 0-100: decide i contributi giornalieri */
+  reputation: number;
   level: number;
   mapId: 'nyc';
   cells: Cell[];
@@ -100,6 +123,9 @@ export interface GameState {
   lines: Line[];
   trains: Train[];
   events: GameEvent[];
+  requests: MayorRequest[];
+  /** prossimo sito (indice in SITE_ORDER) che il sindaco approverà */
+  nextSite: number;
   goalsDone: string[];
   log: { t: number; text: string }[];
   stats: Stats;

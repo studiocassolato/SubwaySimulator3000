@@ -6,8 +6,6 @@ import { lineHandles, type DragPreview, type Selection } from './render';
 import type { Game } from './sim';
 import type { Vec } from './types';
 
-export type Tool = 'line' | 'station' | 'demolish';
-
 const SNAP_PX = 26; // raggio di aggancio generoso per il touch
 const TAP_PX = 8;
 
@@ -18,11 +16,9 @@ type Mode =
   | { kind: 'draw'; preview: DragPreview; lineId?: number; atEnd?: boolean; insertIdx?: number };
 
 export class Input {
-  tool: Tool = 'line';
   selection: Selection = null;
   drag: DragPreview | null = null;
   hoverStation: number | null = null;
-  placing: Vec | null = null;
   onSelect: (s: Selection) => void = () => {};
   onQuote: (text: string | null) => void = () => {};
 
@@ -35,18 +31,10 @@ export class Input {
     canvas.addEventListener('pointermove', (e) => this.move(e));
     canvas.addEventListener('pointerup', (e) => this.up(e));
     canvas.addEventListener('pointercancel', (e) => this.cancel(e));
-    canvas.addEventListener('pointerleave', () => {
-      if (!this.pointers.size) this.placing = null;
-    });
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       this.cam.zoomAt(this.local(e), Math.exp(-e.deltaY * 0.0015));
     }, { passive: false });
-  }
-
-  setTool(t: Tool) {
-    this.tool = t;
-    this.placing = null;
   }
 
   private local(e: { clientX: number; clientY: number }): Vec {
@@ -107,42 +95,40 @@ export class Input {
     this.downAt = p;
     const w = this.cam.toWorld(p);
 
-    if (this.tool === 'line') {
-      const handle = lineHandles(this.game, this.cam).find((h) => {
-        const s = this.cam.toScreen(h.p);
-        return Math.hypot(s.x - p.x, s.y - p.y) < SNAP_PX;
-      });
-      if (handle) {
-        const line = this.game.state.lines.find((l) => l.id === handle.lineId)!;
-        const anchor = handle.atEnd ? line.stations[line.stations.length - 1] : line.stations[0];
+    const handle = lineHandles(this.game, this.cam).find((h) => {
+      const s = this.cam.toScreen(h.p);
+      return Math.hypot(s.x - p.x, s.y - p.y) < SNAP_PX;
+    });
+    if (handle) {
+      const line = this.game.state.lines.find((l) => l.id === handle.lineId)!;
+      const anchor = handle.atEnd ? line.stations[line.stations.length - 1] : line.stations[0];
+      this.mode = {
+        kind: 'draw', lineId: line.id, atEnd: handle.atEnd,
+        preview: { chain: [], anchor, pointer: w, color: line.color },
+      };
+      this.selection = { kind: 'line', id: line.id };
+      this.onSelect(this.selection);
+      return;
+    }
+    const st = this.stationAt(p);
+    if (st !== null) {
+      const used = new Set(this.game.state.lines.map((l) => l.color));
+      const color = LINE_COLORS.find((c) => !used.has(c)) ?? '#888';
+      this.mode = { kind: 'draw', preview: { chain: [st], pointer: w, color } };
+      return;
+    }
+    if (this.selection?.kind === 'line') {
+      const hit = this.lineAt(w);
+      if (hit && hit.lineId === this.selection.id) {
+        const line = this.game.state.lines.find((l) => l.id === hit.lineId)!;
         this.mode = {
-          kind: 'draw', lineId: line.id, atEnd: handle.atEnd,
-          preview: { chain: [], anchor, pointer: w, color: line.color },
+          kind: 'draw', lineId: line.id, insertIdx: hit.seg,
+          preview: {
+            chain: [], pointer: w, color: line.color,
+            insertBetween: [line.stations[hit.seg], line.stations[hit.seg + 1]],
+          },
         };
-        this.selection = { kind: 'line', id: line.id };
-        this.onSelect(this.selection);
         return;
-      }
-      const st = this.stationAt(p);
-      if (st !== null) {
-        const used = new Set(this.game.state.lines.map((l) => l.color));
-        const color = LINE_COLORS.find((c) => !used.has(c)) ?? '#888';
-        this.mode = { kind: 'draw', preview: { chain: [st], pointer: w, color } };
-        return;
-      }
-      if (this.selection?.kind === 'line') {
-        const hit = this.lineAt(w);
-        if (hit && hit.lineId === this.selection.id) {
-          const line = this.game.state.lines.find((l) => l.id === hit.lineId)!;
-          this.mode = {
-            kind: 'draw', lineId: line.id, insertIdx: hit.seg,
-            preview: {
-              chain: [], pointer: w, color: line.color,
-              insertBetween: [line.stations[hit.seg], line.stations[hit.seg + 1]],
-            },
-          };
-          return;
-        }
       }
     }
     this.mode = { kind: 'pan', moved: 0 };
@@ -151,7 +137,6 @@ export class Input {
   private move(e: PointerEvent) {
     const p = this.local(e);
     const prev = this.pointers.get(e.pointerId);
-    if (this.tool === 'station' && e.pointerType === 'mouse') this.placing = this.cam.toWorld(p);
     if (!prev) {
       if (e.pointerType === 'mouse') this.hoverStation = this.stationAt(p);
       return;
@@ -254,19 +239,6 @@ export class Input {
   private tap(p: Vec) {
     const w = this.cam.toWorld(p);
     const st = this.stationAt(p);
-    if (this.tool === 'station') {
-      if (st !== null) return this.select({ kind: 'station', id: st });
-      const created = this.game.addStation(w.x, w.y);
-      if (created) this.select({ kind: 'station', id: created.id });
-      return;
-    }
-    if (this.tool === 'demolish') {
-      if (st !== null) {
-        this.game.removeStation(st);
-        this.select(null);
-      }
-      return;
-    }
     if (st !== null) return this.select({ kind: 'station', id: st });
     const hit = this.lineAt(w, 14);
     if (hit) return this.select({ kind: 'line', id: hit.lineId });
