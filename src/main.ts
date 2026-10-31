@@ -116,12 +116,24 @@ function updateTopbar() {
   $('#btn-music').classList.toggle('off', !music.playing);
 }
 
+// su telefono la velocità è uno "speed dial": si vede solo quella attiva, un tocco apre le altre
+const isPhone = () => window.matchMedia('(max-width: 760px)').matches;
+const speedBox = $('#speed');
 document.querySelectorAll<HTMLButtonElement>('.speed button').forEach((b) =>
-  b.addEventListener('click', () => {
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isPhone() && !speedBox.classList.contains('open')) {
+      speedBox.classList.add('open');
+      return;
+    }
+    speedBox.classList.remove('open');
     game.speed = Number(b.dataset.speed);
     updateTopbar();
   }),
 );
+document.addEventListener('pointerdown', (e) => {
+  if (!speedBox.contains(e.target as Node)) speedBox.classList.remove('open');
+});
 $('#btn-music').addEventListener('click', () => {
   music.toggle();
   savePrefs();
@@ -193,8 +205,10 @@ input.onQuote = (text) => {
 input.onSelect = (s: Selection) => {
   if (s) {
     tab = 'info';
-    setSheet(true);
+    // su telefono il pannello resta chiuso: il pallino sul bottone ℹ️ segnala che c'è qualcosa da vedere
+    if (!isPhone()) setSheet(true);
   }
+  $('#btn-info').classList.toggle('dot', !!s && panel.classList.contains('collapsed'));
   renderPanel(true);
 };
 game.onChange = () => renderPanel();
@@ -218,7 +232,9 @@ const panel = $('#panel');
 function setSheet(open: boolean) {
   panel.classList.toggle('collapsed', !open);
   document.body.classList.toggle('sheet-closed', !open);
+  if (open) $('#btn-info').classList.remove('dot');
 }
+$('#btn-info').addEventListener('click', () => setSheet(panel.classList.contains('collapsed')));
 $('#sheet-handle').addEventListener('click', () => setSheet(panel.classList.contains('collapsed')));
 if (window.matchMedia('(max-width: 760px)').matches) setSheet(false);
 

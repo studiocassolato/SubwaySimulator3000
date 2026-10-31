@@ -32,6 +32,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .money.neg { color: var(--bad); }
 .level .bar { display: inline-block; width: 70px; height: 6px; background: var(--line); border-radius: 3px; vertical-align: middle; margin-left: 6px; overflow: hidden; }
 .level .bar i { display: block; height: 100%; background: var(--accent); }
+.speed-wrap { display: contents; }
+#btn-info { position: relative; }
+#btn-info.dot::after { content: ''; position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .speed { display: flex; gap: 2px; margin-left: auto; background: #f1f3f5; border-radius: 10px; padding: 2px; }
 .speed button, .icon { border: 0; background: transparent; padding: 6px 9px; border-radius: 8px; min-width: 36px; min-height: 34px; }
 .speed button.active { background: var(--ink); color: white; }
@@ -107,11 +110,10 @@ select, input[type='range'] { font: inherit; }
 
 /* ---------- telefono: mappa a tutto schermo e pannello a scomparsa dal basso ---------- */
 @media (max-width: 760px) {
-  .topbar { top: 0; left: 0; right: 0; border-radius: 0 0 var(--radius) var(--radius); gap: 6px 10px; padding: 6px 8px; padding-top: max(6px, env(safe-area-inset-top)); }
+  .topbar { top: 0; left: 0; right: 0; border-radius: 0 0 var(--radius) var(--radius); flex-wrap: nowrap; gap: 6px; padding: 6px 8px; padding-top: max(6px, env(safe-area-inset-top)); }
   .brand, .hide-sm { display: none; }
   .show-sm { display: inline; }
   .stat { font-size: 13px; }
-  .level .bar { width: 40px; }
   .speed button, .icon { min-width: 34px; padding: 5px 6px; }
   #quote { bottom: calc(40vh + 120px); }
   #toasts { top: 96px; left: 10px; right: 10px; max-width: none; }
@@ -122,11 +124,16 @@ select, input[type='range'] { font: inherit; }
     border-radius: 18px 18px 0 0; transition: transform 0.25s ease;
     padding-bottom: env(safe-area-inset-bottom);
   }
-  .panel.collapsed { transform: translateY(calc(40vh - 52px)); }
+  .panel.collapsed { transform: translateY(110%); }
+  .speed-wrap { display: block; position: relative; width: 38px; height: 38px; margin-left: auto; }
+  .speed { position: absolute; top: 0; right: 0; flex-direction: column; margin: 0; z-index: 6; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+  .speed:not(.open) { box-shadow: none; }
+  .speed:not(.open) button:not(.active) { display: none; }
+  .level .bar { display: none; }
   .sheet-handle { display: block; width: 44px; height: 5px; border-radius: 3px; background: #c9ced4; margin: 7px auto 0; }
   body.sheet-closed #quote { bottom: 70px; }
+  body.sheet-closed #requests { bottom: 12px; }
   #requests { top: auto; bottom: calc(40vh + 10px); left: 10px; right: 10px; width: auto; transition: bottom 0.25s ease; }
-  body.sheet-closed #requests { bottom: 62px; }
   .req { padding: 6px 10px; }
   .req:nth-child(n + 3) { display: none; }
 }
@@ -136,4 +143,13 @@ select, input[type='range'] { font: inherit; }
   .panel { width: 400px; }
   #toasts { right: 420px; }
   .panel-body { font-size: 15px; }
+}
+
+/* telefoni stretti (iPhone SE): il livello resta nel pannello Obiettivi */
+@media (max-width: 380px) {
+  #level { display: none; }
+  .topbar { gap: 4px; }
+  .stat { font-size: 12px; }
+  .icon { min-width: 28px; padding: 4px; }
+  .speed-wrap { width: 34px; height: 34px; flex-shrink: 0; }
 }
