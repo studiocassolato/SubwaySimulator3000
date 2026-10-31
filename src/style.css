@@ -80,6 +80,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .chip { display: inline-flex; align-items: center; gap: 4px; background: #f1f3f5; border-radius: 12px; padding: 2px 8px; margin: 2px; font-size: 12px; }
 .btn { border: 1px solid var(--line); background: white; border-radius: 10px; padding: 7px 12px; font-weight: 600; }
 .btn:hover { background: #f6f7f8; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn.primary { background: var(--ink); color: white; border-color: var(--ink); }
 .btn.danger { color: var(--bad); }
 .btn.small { padding: 3px 9px; font-size: 13px; }

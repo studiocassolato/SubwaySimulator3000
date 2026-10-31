@@ -67,6 +67,8 @@ export interface Line {
   color: string;
   name: string;
   stations: number[];
+  /** linea presa in gestione dal Comune: il giocatore non la usa né la modifica finché non la riscatta */
+  seized?: boolean;
 }
 
 export interface Train {
@@ -128,6 +130,8 @@ export interface GameState {
   requests: MayorRequest[];
   /** prossimo sito (indice in SITE_ORDER) che il sindaco approverà */
   nextSite: number;
+  /** donazioni al Comune fatte oggi (il prezzo cresce a ogni donazione) */
+  donationsToday?: number;
   goalsDone: string[];
   log: { t: number; text: string }[];
   stats: Stats;

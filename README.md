@@ -31,7 +31,8 @@ Ad ogni push su `main` il workflow `.github/workflows/pages.yml` pubblica il gio
   - una stazione con troppa gente in attesa avvia un conto alla rovescia (arco rosso). Allo scadere scatta la crisi: il quartiere perde densità e smette di crescere per un giorno;
   - le stazioni non collegate accumulano malcontento (barra arancione). Al 100% i residenti protestano e la fiducia del sindaco cala;
   - il sindaco fa richieste a tempo ("collega X", "porta N persone verso…"), con premi o penalità;
-  - la fiducia del sindaco (🏛️) decide il contributo giornaliero del Comune.
+  - la fiducia del sindaco (🏛️) decide quanta parte dei biglietti tieni, quanto costa costruire, il contributo giornaliero e se apre nuove stazioni. Sale ogni giorno con un buon servizio, con le richieste completate e con le donazioni al Comune;
+  - sotto 25 di fiducia sei tu a pagare una compensazione giornaliera al Comune; sotto 10 il sindaco si prende la linea peggiore (grigia e tratteggiata): non puoi usarla né collegarti, e la riscatti a pagamento quando la fiducia torna a 20.
 - La domanda di una stazione appena collegata parte bassa e cresce in circa un giorno e mezzo.
 - Nessun game over. Pausa e velocità dalla barra in alto (tastiera: spazio, 1, 2, 3).
 

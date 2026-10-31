@@ -42,6 +42,7 @@ export function lineHandles(game: Game, cam: Camera) {
   const out: { lineId: number; atEnd: boolean; p: Vec; from: Vec }[] = [];
   const byStation = new Map<string, number>();
   for (const line of game.state.lines) {
+    if (line.seized) continue;
     const n = line.stations.length;
     for (const atEnd of [false, true]) {
       const a = game.net.stationById.get(line.stations[atEnd ? n - 1 : 0]);
@@ -190,11 +191,19 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
       ctx.lineWidth = px(13);
       ctx.stroke();
     }
-    ctx.strokeStyle = line.color;
+    ctx.strokeStyle = line.seized ? '#8a8f98' : line.color;
     ctx.globalAlpha = dim ? 0.35 : 1;
     ctx.lineWidth = px(7);
+    // linea gestita dal Comune: grigia e tratteggiata
+    if (line.seized) ctx.setLineDash([px(14), px(8)]);
     ctx.stroke();
+    ctx.setLineDash([]);
     ctx.globalAlpha = 1;
+    if (line.seized) {
+      const mid = pointAt(g.pts, g.stationDist[g.stationDist.length - 1] / 2).p;
+      ctx.font = `${px(18)}px ${FONT}`;
+      ctx.fillText('🏛️', mid.x, mid.y - px(14));
+    }
     // gallerie: tratteggio bianco sopra la linea
     for (const t of g.tunnels) {
       ctx.beginPath();
@@ -262,7 +271,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
     const w = px(26);
     const h = px(13);
     roundRect(ctx, -w / 2, -h / 2, w, h, px(3));
-    ctx.fillStyle = t.brokenFor > 0 ? '#555' : line.color;
+    ctx.fillStyle = t.brokenFor > 0 ? '#555' : line.seized ? '#8a8f98' : line.color;
     ctx.fill();
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = px(1.5);

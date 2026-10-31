@@ -117,3 +117,14 @@ export const MIN_REP_FOR_STATIONS = 30;
 
 /** multa del Comune per ogni crisi da sovraffollamento, moltiplicata per il livello */
 export const CRISIS_FINE = 600;
+
+/** Sotto questa fiducia il contributo diventa una compensazione che paghi tu al Comune. */
+export const COMPENSATION_BELOW = 25;
+export const COMPENSATION_PER_POINT = 60;
+/** Sotto questa fiducia il sindaco si prende la linea peggiore. */
+export const SEIZE_BELOW = 10;
+/** Da questa fiducia in su puoi riscattare una linea presa dal Comune. */
+export const BUYBACK_FROM = 20;
+/** Donazione volontaria al Comune: prezzo base per livello e fiducia guadagnata. */
+export const DONATION_BASE = 1200;
+export const DONATION_REP = 4;

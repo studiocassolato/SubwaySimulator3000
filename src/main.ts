@@ -1,6 +1,8 @@
 import './style.css';
 import { Camera } from './camera';
-import { COST, GRANT_PER_REP, LEVELS, MIN_REP_FOR_STATIONS, OVERCROWD_LIMIT, ZONES, ZONE_TYPES, costMult, fareShare } from './config';
+import {
+  BUYBACK_FROM, COMPENSATION_BELOW, COMPENSATION_PER_POINT, COST, DONATION_REP, GRANT_PER_REP, LEVELS, MIN_REP_FOR_STATIONS, SEIZE_BELOW, OVERCROWD_LIMIT, ZONES, ZONE_TYPES, costMult, fareShare,
+} from './config';
 import { Input } from './input';
 import { Music, type MusicStyle } from './music';
 import { landAt, WORLD_H, WORLD_W } from './nyc';
@@ -261,6 +263,15 @@ function infoHtml(): string {
     const trains = s.trains.filter((t) => t.lineId === line.id);
     const aboard = trains.reduce((a, t) => a + t.passengers.length, 0);
     const tunnels = game.net.geom.get(line.id)?.tunnels.length ?? 0;
+    if (line.seized) {
+      const canBuy = s.reputation >= BUYBACK_FROM;
+      return `
+      <h3>🏛️ ${line.name}</h3>
+      <div class="hint"><b>In gestione al Comune.</b> I treni girano ma non portano i tuoi passeggeri, e non puoi collegarti alle sue stazioni.</div>
+      <p>${line.stations.map((id) => game.net.stationById.get(id)!.name).join(' · ')}</p>
+      <div class="btns"><button class="btn primary" data-action="buyback" data-id="${line.id}" ${canBuy ? '' : 'disabled'}>🔑 Riscatta per ${fmtMoney(game.buybackCost(line))}</button></div>
+      ${canBuy ? '' : `<p class="muted">Il sindaco tratta solo con fiducia almeno ${BUYBACK_FROM} (ora ${Math.round(s.reputation)}).</p>`}`;
+    }
     return `
       <h3><span class="swatch" style="display:inline-block;background:${line.color}"></span> ${line.name}</h3>
       <p class="muted">${line.stations.length} fermate · ${tunnels} gallerie · ${aboard} passeggeri a bordo</p>
@@ -315,16 +326,18 @@ function trustHtml(): string {
   return `<h4>Fiducia del sindaco: ${Math.round(r)}/100</h4>
     <div class="row"><span class="grow">🎟️ Quota dei biglietti che tieni</span><b>${pct(fareShare(r))}</b></div>
     <div class="row"><span class="grow">🏗️ Costi di costruzione</span><b>${pct(costMult(r))}</b></div>
-    <div class="row"><span class="grow">💵 Contributo giornaliero</span><b>${fmtMoney(r * GRANT_PER_REP)}</b></div>
+    <div class="row"><span class="grow">💵 ${r >= COMPENSATION_BELOW ? 'Contributo giornaliero' : 'Compensazione che paghi ogni giorno'}</span><b>${fmtMoney(r >= COMPENSATION_BELOW ? r * GRANT_PER_REP : (COMPENSATION_BELOW - r) * COMPENSATION_PER_POINT * game.state.level)}</b></div>
     <div class="row"><span class="grow">🚇 Nuove stazioni ogni mattina</span><b>${r >= MIN_REP_FOR_STATIONS ? 'sì' : `no (serve ${MIN_REP_FOR_STATIONS})`}</b></div>
-    <p class="muted">La fiducia sale ogni giorno se colleghi più della metà delle stazioni e i passeggeri sono soddisfatti, e con le richieste completate. Scende con proteste, crisi e richieste scadute.</p>`;
+    <div class="row"><span class="grow">🏛️ Linee a rischio</span><b>${r < SEIZE_BELOW ? 'il sindaco ne prende una stanotte' : `sotto ${SEIZE_BELOW}`}</b></div>
+    <div class="btns"><button class="btn" data-action="donate" ${r >= 100 ? 'disabled' : ''}>🤝 Dona ${fmtMoney(game.donationCost())} al Comune (+${DONATION_REP} fiducia)</button></div>
+    <p class="muted">La fiducia sale ogni giorno se colleghi più della metà delle stazioni e i passeggeri sono soddisfatti, con le richieste completate e con le donazioni (sempre più care nello stesso giorno). Scende con proteste, crisi e richieste scadute. Sotto ${COMPENSATION_BELOW} paghi tu una compensazione al Comune, sotto ${SEIZE_BELOW} il sindaco si prende la linea peggiore: la riscatti da ${BUYBACK_FROM} in su.</p>`;
 }
 
 function linesHtml(): string {
   const s = game.state;
   const rows = s.lines.map((l) => {
     const trains = s.trains.filter((t) => t.lineId === l.id).length;
-    return `<div class="row"><span class="swatch" style="background:${l.color}"></span><span class="grow">${l.name}<br><small class="muted">${l.stations.length} fermate · ${trains} treni</small></span>
+    return `<div class="row"><span class="swatch" style="background:${l.color}"></span><span class="grow">${l.seized ? '🏛️ ' : ''}${l.name}<br><small class="muted">${l.seized ? 'gestita dal Comune · ' : ''}${l.stations.length} fermate · ${trains} treni</small></span>
       <button class="btn small" data-action="train-remove" data-id="${l.id}">−</button>
       <button class="btn small" data-action="train-add" data-id="${l.id}">+🚆</button>
       <button class="btn small" data-action="select-line" data-id="${l.id}">Apri</button></div>`;
@@ -367,6 +380,8 @@ $('#panel-body').addEventListener('click', (e) => {
     case 'train-remove': game.removeTrain(id); break;
     case 'unlink': game.removeStationFromLine(Number(b.dataset.line), id); break;
     case 'delete-line': game.deleteLine(id); input.select(null); break;
+    case 'buyback': game.buyback(id); break;
+    case 'donate': game.donate(); break;
   }
   renderPanel(true);
 });

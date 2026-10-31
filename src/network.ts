@@ -63,9 +63,11 @@ export class Network {
       for (let i = 0; i < line.stations.length; i++) {
         const st = this.stationById.get(line.stations[i]);
         if (!st) continue;
-        const arr = this.linesAt.get(st.id) ?? [];
-        arr.push(line);
-        this.linesAt.set(st.id, arr);
+        if (!line.seized) {
+          const arr = this.linesAt.get(st.id) ?? [];
+          arr.push(line);
+          this.linesAt.set(st.id, arr);
+        }
         if (i === 0) {
           pts.push({ x: st.x, y: st.y });
           stationDist.push(0);
@@ -125,6 +127,7 @@ export class Network {
     const adj = new Map<number, Set<number>>();
     for (const st of s.stations) adj.set(st.id, new Set());
     for (const line of s.lines) {
+      if (line.seized) continue;
       for (let i = 1; i < line.stations.length; i++) {
         adj.get(line.stations[i - 1])?.add(line.stations[i]);
         adj.get(line.stations[i])?.add(line.stations[i - 1]);
