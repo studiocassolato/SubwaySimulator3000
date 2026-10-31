@@ -25,7 +25,7 @@ Ad ogni push su `main` il workflow `.github/workflows/pages.yml` pubblica il gio
 - I passeggeri sono pallini del colore della zona dove vogliono andare. La domanda cambia con l'ora:
   al mattino si va al lavoro e a scuola, a pranzo al cibo, la sera a casa e allo svago.
 - Ogni viaggio paga un biglietto. Gli isolati vicini alle stazioni più usate si densificano e i terreni liberi vengono edificati.
-- Più abitanti servi, più sali di livello: più linee e treni più capienti. Gli obiettivi danno premi in denaro.
+- Più abitanti servi, più sali di livello: più linee, più treni per linea (5 al livello 1, fino a 12) e treni più capienti. Gli obiettivi danno premi in denaro.
 - Imprevisti moderati (guasti, allagamenti nelle gallerie, picchi di domanda, cantieri): si regolano o disattivano dal menu.
 - **Urgenza**:
   - una stazione con troppa gente in attesa avvia un conto alla rovescia (arco rosso). Allo scadere scatta la crisi: il quartiere perde densità e smette di crescere per un giorno;
