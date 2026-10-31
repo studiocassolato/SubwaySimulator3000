@@ -17,7 +17,7 @@ Ad ogni push su `main` il workflow `.github/workflows/pages.yml` pubblica il gio
 
 ## Come si gioca
 
-- **Stazione**: tocca la terraferma per costruire una stazione. Il cerchio tratteggiato è il bacino pedonale.
+- **Stazioni del sindaco**: le stazioni non le costruisci tu. Si parte con 12 stazioni nei quartieri centrali, poi il sindaco ne approva una nuova ogni mattina e due a ogni livello. All'inizio i soldi non bastano per collegarle tutte.
 - **Linee**: trascina da una stazione all'altra; passando su più stazioni le colleghi in fila. Tornando indietro annulli l'ultima.
   - Prolunga una linea trascinando la "T" a un capolinea.
   - Seleziona una linea e trascina un suo tratto su una stazione per aggiungere una fermata in mezzo.
@@ -27,7 +27,13 @@ Ad ogni push su `main` il workflow `.github/workflows/pages.yml` pubblica il gio
 - Ogni viaggio paga un biglietto. Gli isolati vicini alle stazioni più usate si densificano e i terreni liberi vengono edificati.
 - Più abitanti servi, più sali di livello: più linee e treni più capienti. Gli obiettivi danno premi in denaro.
 - Imprevisti moderati (guasti, allagamenti nelle gallerie, picchi di domanda, cantieri): si regolano o disattivano dal menu.
-- Nessun game over. Pausa e velocità dalla barra in alto (tastiera: spazio, 1, 2, 3; L/S/D per gli strumenti).
+- **Urgenza**:
+  - una stazione con troppa gente in attesa avvia un conto alla rovescia (arco rosso). Allo scadere scatta la crisi: il quartiere perde densità e smette di crescere per un giorno;
+  - le stazioni non collegate accumulano malcontento (barra arancione). Al 100% i residenti protestano e la fiducia del sindaco cala;
+  - il sindaco fa richieste a tempo ("collega X", "porta N persone verso…"), con premi o penalità;
+  - la fiducia del sindaco (🏛️) decide il contributo giornaliero del Comune.
+- La domanda di una stazione appena collegata parte bassa e cresce in circa un giorno e mezzo.
+- Nessun game over. Pausa e velocità dalla barra in alto (tastiera: spazio, 1, 2, 3).
 
 ## Salvataggi
 

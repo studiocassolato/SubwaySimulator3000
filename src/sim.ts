@@ -1,11 +1,12 @@
 import {
-  COST, DWELL, FARE_BASE, FARE_PER_HOP, LEVELS, LINE_COLORS, MAX_WAIT, POP_PER_DENSITY,
-  STATION_CAPACITY, TRAIN_SPEED, ZONES, demandProfile,
+  COST, DISCONTENT_MINUTES, DWELL, FARE_BASE, FARE_PER_HOP, GRANT_PER_REP, LEVELS, LINE_COLORS, MAX_WAIT,
+  OVERCROWD_AT, OVERCROWD_LIMIT, POP_PER_DENSITY, RAMP_DAYS, STATION_CAPACITY, TRAIN_SPEED, ZONES, ZONE_TYPES,
+  demandProfile,
 } from './config';
 import { Network } from './network';
 import { landAt } from './nyc';
-import type { GameEvent, GameState, Line, Passenger, Station, Train, ZoneType } from './types';
-import { nearestSeedName } from './world';
+import type { GameEvent, GameState, Line, MayorRequest, Passenger, Station, Train, ZoneType } from './types';
+import { SITE_ORDER, makeStation } from './world';
 
 /** Passeggeri generati per punto di densità al minuto (prima dei moltiplicatori orari). */
 const DEMAND_K = 0.006;
@@ -100,34 +101,24 @@ export class Game {
 
   // ---------- azioni del giocatore ----------
 
-  addStation(x: number, y: number): Station | null {
-    if (!landAt({ x, y })) {
-      this.onNotify('Le stazioni vanno costruite sulla terraferma', 'bad');
-      return null;
+  /** Il sindaco approva il prossimo sito in elenco: la stazione compare già costruita. */
+  approveStation(): Station | null {
+    const s = this.state;
+    while (s.nextSite < SITE_ORDER.length) {
+      const site = SITE_ORDER[s.nextSite++];
+      if (s.stations.some((st) => Math.hypot(st.x - site.x, st.y - site.y) < 120)) continue;
+      const st = makeStation(this.id(), site);
+      s.stations.push(st);
+      this.net.rebuild();
+      this.log(`🏛️ Il sindaco ha aperto il cantiere di una nuova stazione: ${st.name}`, 'good');
+      this.onChange();
+      return st;
     }
-    if (this.state.stations.some((s) => Math.hypot(s.x - x, s.y - y) < 90)) {
-      this.onNotify('Troppo vicina a un\'altra stazione', 'bad');
-      return null;
-    }
-    if (!this.spend(COST.station, 'la stazione')) return null;
-    const used = new Set(this.state.stations.map((s) => s.name));
-    const st: Station = { id: this.id(), x, y, name: nearestSeedName({ x, y }, used), waiting: [], served: 0 };
-    this.state.stations.push(st);
-    this.net.rebuild();
-    this.onChange();
-    return st;
+    return null;
   }
 
-  removeStation(id: number) {
-    const st = this.net.stationById.get(id);
-    if (!st) return;
-    for (const line of [...this.state.lines]) {
-      if (line.stations.includes(id)) this.removeStationFromLine(line.id, id, true);
-    }
-    this.state.stations = this.state.stations.filter((s) => s.id !== id);
-    this.state.money += Math.round(COST.station / 2);
-    this.net.rebuild();
-    this.onChange();
+  stationLinked(id: number) {
+    return (this.net.linesAt.get(id)?.length ?? 0) > 0;
   }
 
   canAddLine(): boolean {
@@ -154,6 +145,7 @@ export class Game {
     const line: Line = { id: this.id(), color, name: `Linea ${n}`, stations: [...stations] };
     this.state.lines.push(line);
     this.net.rebuild();
+    this.markOpened();
     this.state.trains.push(this.makeTrain(line));
     this.log(`${line.name} inaugurata (${stations.length} fermate)`, 'good');
     this.onChange();
@@ -252,8 +244,16 @@ export class Game {
       .map((t) => ({ t, stationId: line.stations[t.target] }));
   }
 
+  /** Registra quando una stazione entra in servizio: da lì la domanda cresce gradualmente. */
+  private markOpened() {
+    for (const st of this.state.stations) {
+      if (st.openedAt === undefined && this.stationLinked(st.id)) st.openedAt = this.state.time;
+    }
+  }
+
   private afterLineChange(line: Line, before: { t: Train; stationId: number }[]) {
     this.net.rebuild();
+    this.markOpened();
     const g = this.net.geom.get(line.id)!;
     for (const { t, stationId } of before) {
       // il treno riparte dalla fermata verso cui era diretto
@@ -285,6 +285,7 @@ export class Game {
     this.generate(dt);
     for (const t of s.trains) this.moveTrain(t, dt);
     this.expireWaiting();
+    this.urgency(dt);
     if (Math.floor(s.time / 60) !== prevHour) this.hourly();
     if (Math.floor(s.time / 1440) !== prevDay) this.daily();
   }
@@ -301,11 +302,12 @@ export class Game {
     const peaks = new Set(this.activeEvents('peak').map((e) => e.cellId));
     for (const st of s.stations) {
       if (!this.net.linesAt.get(st.id)?.length || closed.has(st.id)) continue;
+      const ramp = Math.min(1, 0.15 + (0.85 * (s.time - (st.openedAt ?? s.time))) / (RAMP_DAYS * 1440));
       for (const cid of this.net.catchment.get(st.id) ?? []) {
         const c = byId.get(cid)!;
         if (!c.density) continue;
         const prof = demandProfile(c.type, hour);
-        let rate = c.density * prof.rate * DEMAND_K * dt;
+        let rate = c.density * prof.rate * DEMAND_K * dt * ramp;
         if (peaks.has(c.id)) rate *= 5;
         if (Math.random() >= rate) continue;
         const dest = pickWeighted(prof.dest);
@@ -377,6 +379,7 @@ export class Game {
         s.stats.incomeToday += fare;
         s.stats.delivered++;
         st.served++;
+        for (const r of s.requests) if (r.kind === 'deliver' && r.zone === p.dest) r.progress++;
         s.satisfaction += (100 - s.satisfaction) * 0.01;
         moved++;
       } else if (this.net.hopsTo(p.dest, next) >= here) {
@@ -430,6 +433,10 @@ export class Game {
     this.maybeEvent();
     this.checkLevel();
     this.checkGoals();
+    this.checkRequests();
+    this.maybeRequest();
+    // ogni mattina il sindaco approva una nuova stazione
+    if (Math.floor(s.time / 60) % 24 === 6 && s.time > 1440) this.approveStation();
     this.onChange();
   }
 
@@ -440,6 +447,10 @@ export class Game {
     let changed = false;
     for (const st of s.stations) {
       if (!this.net.linesAt.get(st.id)?.length) continue;
+      if (st.frozenUntil && s.time < st.frozenUntil) {
+        st.served = 0;
+        continue;
+      }
       const pressure = Math.min(1, st.served / 10) * sat;
       st.served = 0;
       for (const cid of this.net.catchment.get(st.id) ?? []) {
@@ -499,6 +510,101 @@ export class Game {
     this.log(ev.title, 'bad');
   }
 
+  private get hard() {
+    return this.state.difficulty === 'normal';
+  }
+
+  changeRep(delta: number) {
+    this.state.reputation = Math.max(0, Math.min(100, this.state.reputation + delta));
+  }
+
+  /** Conti alla rovescia: sovraffollamento delle stazioni e malcontento di quelle scollegate. */
+  private urgency(dt: number) {
+    const s = this.state;
+    const byId = new Map(s.cells.map((c) => [c.id, c]));
+    const fill = DISCONTENT_MINUTES[this.hard ? 'normal' : 'easy'];
+    for (const st of s.stations) {
+      if (this.stationLinked(st.id)) {
+        st.discontent = Math.max(0, st.discontent - dt * 0.2);
+        if (st.waiting.length >= OVERCROWD_AT) st.crowd += dt;
+        else st.crowd = Math.max(0, st.crowd - dt * 0.5);
+        if (st.crowd >= OVERCROWD_LIMIT) this.crowdCrisis(st, byId);
+      } else {
+        // più gente abita vicino, più in fretta cresce la protesta
+        const pop = (this.net.catchment.get(st.id) ?? []).reduce((a, id) => a + (byId.get(id)?.density ?? 0), 0);
+        st.discontent += (dt / fill) * 100 * Math.min(1.6, Math.max(0.4, pop / 40));
+        if (st.discontent >= 100) {
+          st.discontent = 40;
+          this.changeRep(this.hard ? -5 : -3);
+          this.log(`📣 Gli abitanti di ${st.name} protestano: vogliono la metro! Fiducia del sindaco in calo`, 'bad');
+        }
+      }
+    }
+  }
+
+  private crowdCrisis(st: Station, byId: Map<number, GameState['cells'][number]>) {
+    const s = this.state;
+    st.crowd = 0;
+    s.stats.lost += st.waiting.length;
+    st.waiting = [];
+    st.frozenUntil = s.time + 1440;
+    s.satisfaction *= 0.85;
+    this.changeRep(this.hard ? -8 : -5);
+    // il quartiere perde un po' di attrattiva
+    const cells = (this.net.catchment.get(st.id) ?? []).map((id) => byId.get(id)!).filter((c) => c.density > 1);
+    for (let i = 0; i < 2 && cells.length; i++) cells.splice(Math.floor(Math.random() * cells.length), 1)[0].density--;
+    this.net.rebuild();
+    this.log(`🚨 Crisi a ${st.name}: stazione sovraffollata troppo a lungo. Il quartiere smette di crescere per un giorno`, 'bad');
+  }
+
+  private maybeRequest() {
+    const s = this.state;
+    if (s.requests.length >= 2 || !s.lines.length) return;
+    const last = Math.max(0, ...s.requests.map((r) => r.deadline - 2 * 1440));
+    if (s.time - last < 360 || Math.random() > (s.requests.length ? 0.04 : 0.12)) return;
+    const unlinked = s.stations.filter((st) => !this.stationLinked(st.id) && !s.requests.some((r) => r.stationId === st.id));
+    let req: MayorRequest;
+    if (unlinked.length && Math.random() < 0.6) {
+      // di solito chiede di collegare la stazione più recente
+      const st = unlinked[unlinked.length - 1 - Math.floor(Math.random() * Math.min(2, unlinked.length))];
+      req = {
+        id: this.id(), kind: 'connect', stationId: st.id, title: `Collega ${st.name}`,
+        target: 1, progress: 0, deadline: s.time + 2 * 1440, reward: 1500 + 300 * s.level, rep: 8,
+      };
+    } else {
+      const zones = ZONE_TYPES.filter((z) => z !== 'residential' && s.stations.some((st) => this.stationLinked(st.id) && this.net.serves.get(st.id)?.has(z)));
+      if (!zones.length) return;
+      const zone = zones[Math.floor(Math.random() * zones.length)];
+      const target = 25 + 15 * s.level;
+      req = {
+        id: this.id(), kind: 'deliver', zone, title: `Porta ${target} persone verso ${ZONES[zone].label.toLowerCase()}`,
+        target, progress: 0, deadline: s.time + 1.5 * 1440, reward: 1200 + 300 * s.level, rep: 6,
+      };
+    }
+    s.requests.push(req);
+    this.log(`🏛️ Richiesta del sindaco: ${req.title} entro ${Math.round((req.deadline - s.time) / 60)} ore`, 'info');
+  }
+
+  private checkRequests() {
+    const s = this.state;
+    s.requests = s.requests.filter((r) => {
+      if (r.kind === 'connect' && r.stationId !== undefined) r.progress = this.stationLinked(r.stationId) ? 1 : 0;
+      if (r.progress >= r.target) {
+        s.money += r.reward;
+        s.stats.incomeToday += r.reward;
+        this.changeRep(r.rep);
+        this.log(`✅ Richiesta completata: ${r.title} (+$${r.reward}, fiducia +${r.rep})`, 'good');
+        return false;
+      }
+      if (s.time >= r.deadline) {
+        this.changeRep(-r.rep - 2);
+        this.log(`⌛ Richiesta scaduta: ${r.title}. Il sindaco è deluso`, 'bad');
+        return false;
+      }
+      return true;
+    });
+  }
+
   checkLevel() {
     const s = this.state;
     const pop = this.servedPopulation();
@@ -509,6 +615,8 @@ export class Game {
     if (lvl > s.level) {
       s.level = lvl;
       this.log(`Livello ${lvl}! ${LEVELS[lvl - 1].unlock}`, 'good');
+      this.approveStation();
+      this.approveStation();
     }
   }
 
@@ -527,13 +635,16 @@ export class Game {
     const upkeep = s.trains.length * COST.trainUpkeepPerDay + s.stations.length * COST.stationUpkeepPerDay;
     s.money -= upkeep;
     s.stats.expensesToday += upkeep;
+    const grant = Math.round(s.reputation * GRANT_PER_REP);
+    s.money += grant;
+    s.stats.incomeToday += grant;
     s.stats.lastDayIncome = s.stats.incomeToday;
     s.stats.lastDayExpenses = s.stats.expensesToday;
     s.stats.incomeToday = 0;
     s.stats.expensesToday = 0;
     this.unmet.clear();
     const day = Math.floor(s.time / 1440) + 1;
-    this.log(`Inizia il giorno ${day}. Ieri: incassi $${s.stats.lastDayIncome}, spese $${s.stats.lastDayExpenses}`);
+    this.log(`Inizia il giorno ${day}. Contributo del Comune: $${grant}. Ieri: incassi $${s.stats.lastDayIncome}, spese $${s.stats.lastDayExpenses}`);
   }
 }
 

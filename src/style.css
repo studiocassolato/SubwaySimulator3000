@@ -38,19 +38,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .icon:hover, .speed button:hover:not(.active) { background: #e8ebee; }
 .icon.off { opacity: 0.45; }
 
-.tools {
-  position: absolute; left: 10px; bottom: 14px; display: flex; gap: 6px;
-  background: var(--paper); padding: 6px; border-radius: var(--radius); box-shadow: var(--shadow);
-}
-.tools button {
-  border: 0; background: transparent; border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column;
-  align-items: center; gap: 2px; font-size: 12px; font-weight: 600; min-width: 70px;
-}
-.tools button span { font-size: 18px; line-height: 1; }
-.tools button.active { background: var(--ink); color: white; }
-
+#requests { position: absolute; top: 74px; left: 10px; width: 300px; display: flex; flex-direction: column; gap: 6px; }
+.req { background: var(--paper); border-radius: 12px; box-shadow: var(--shadow); padding: 8px 12px; font-size: 13px; cursor: pointer; }
+.req b { display: block; font-size: 14px; }
+.req .meter { height: 5px; border-radius: 3px; background: var(--line); margin-top: 6px; overflow: hidden; }
+.req .meter i { display: block; height: 100%; background: var(--accent); }
+.req.late { border-left: 4px solid var(--bad); }
+.req .time { float: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.req.late .time { color: var(--bad); }
 #quote {
-  position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
   background: var(--ink); color: white; padding: 8px 14px; border-radius: 20px; font-weight: 600; pointer-events: none;
   box-shadow: var(--shadow); white-space: nowrap;
 }
@@ -111,7 +108,7 @@ select, input[type='range'] { font: inherit; }
   .stat { font-size: 13px; }
   .level .bar { width: 40px; }
   .speed button, .icon { min-width: 34px; padding: 5px 6px; }
-  #quote { bottom: calc(40vh + 86px); }
+  #quote { bottom: calc(40vh + 120px); }
   #toasts { top: 96px; left: 10px; right: 10px; max-width: none; }
   .toast { font-size: 13px; padding: 6px 10px; }
   .toast:nth-child(n + 3) { display: none; }
@@ -122,10 +119,11 @@ select, input[type='range'] { font: inherit; }
   }
   .panel.collapsed { transform: translateY(calc(40vh - 52px)); }
   .sheet-handle { display: block; width: 44px; height: 5px; border-radius: 3px; background: #c9ced4; margin: 7px auto 0; }
-  .tools { left: 50%; transform: translateX(-50%); bottom: calc(40vh + 10px); transition: bottom 0.25s ease; }
-  .tools.low { bottom: 62px; }
-  .tools.low ~ #quote { bottom: 140px; }
-  .tools button { min-width: 64px; padding: 7px 8px; }
+  body.sheet-closed #quote { bottom: 70px; }
+  #requests { top: auto; bottom: calc(40vh + 10px); left: 10px; right: 10px; width: auto; transition: bottom 0.25s ease; }
+  body.sheet-closed #requests { bottom: 62px; }
+  .req { padding: 6px 10px; }
+  .req:nth-child(n + 3) { display: none; }
 }
 
 /* monitor grandi: più spazio per i dettagli */

@@ -1,5 +1,5 @@
 import type { Camera } from './camera';
-import { STATION_RADIUS, ZONES } from './config';
+import { OVERCROWD_LIMIT, STATION_RADIUS, ZONES } from './config';
 import { octilinear, pointAt } from './geometry';
 import { BROOKLYN_LABEL, CENTRAL_PARK, LAND, SEEDS, WATER_LABELS, WORLD_H, WORLD_W } from './nyc';
 import type { Game } from './sim';
@@ -35,8 +35,6 @@ export interface RenderOpts {
   selection: Selection;
   drag: DragPreview | null;
   hoverStation: number | null;
-  placing: Vec | null;
-  tool: string;
 }
 
 export function lineHandles(game: Game, cam: Camera) {
@@ -177,7 +175,6 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
     const st = net.stationById.get(opts.selection.id);
     if (st) ring(st);
   }
-  if (opts.placing) ring(opts.placing);
 
   // linee
   const selLine = opts.selection?.kind === 'line' ? opts.selection.id : null;
@@ -290,17 +287,37 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
 
   // stazioni
   const closed = new Set(state.events.filter((e) => e.kind === 'works').map((e) => e.stationId));
+  const requested = new Set(state.requests.map((q) => q.stationId));
   for (const st of state.stations) {
     if (st.x < view.x0 || st.x > view.x1 || st.y < view.y0 || st.y > view.y1) continue;
     const r = px(opts.hoverStation === st.id ? 12 : 9);
     const linked = (net.linesAt.get(st.id)?.length ?? 0) > 0;
     const sel = opts.selection?.kind === 'station' && opts.selection.id === st.id;
-    if (st.waiting.length > 20) {
+    if (linked && st.crowd > 0) {
+      // conto alla rovescia del sovraffollamento: l'arco si chiude verso la crisi
+      const f = Math.min(1, st.crowd / OVERCROWD_LIMIT);
       ctx.beginPath();
-      ctx.arc(st.x, st.y, r + px(6) + Math.sin(performance.now() / 150) * px(2), 0, Math.PI * 2);
-      ctx.strokeStyle = '#e53935';
-      ctx.lineWidth = px(3);
+      ctx.arc(st.x, st.y, r + px(7), 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(229,57,53,0.18)';
+      ctx.lineWidth = px(5);
       ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(st.x, st.y, r + px(7), -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2);
+      ctx.strokeStyle = f > 0.7 ? `rgba(229,57,53,${0.6 + 0.4 * Math.sin(performance.now() / 120)})` : '#e53935';
+      ctx.stroke();
+    }
+    if (!linked && st.discontent > 1) {
+      // barra del malcontento sotto le stazioni ancora da collegare
+      const w = px(30);
+      const f = Math.min(1, st.discontent / 100);
+      ctx.fillStyle = 'rgba(31,42,55,0.15)';
+      ctx.fillRect(st.x - w / 2, st.y - r - px(10), w, px(4));
+      ctx.fillStyle = f > 0.75 ? '#e53935' : '#fb8c00';
+      ctx.fillRect(st.x - w / 2, st.y - r - px(10), w * f, px(4));
+    }
+    if (requested.has(st.id)) {
+      ctx.font = `${px(16)}px ${FONT}`;
+      ctx.fillText('📌', st.x + r + px(4), st.y - r - px(6));
     }
     ctx.beginPath();
     ctx.arc(st.x, st.y, r, 0, Math.PI * 2);
@@ -341,15 +358,6 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
     }
   }
 
-  if (opts.placing) {
-    ctx.beginPath();
-    ctx.arc(opts.placing.x, opts.placing.y, px(9), 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    ctx.fill();
-    ctx.strokeStyle = COLORS.ink;
-    ctx.lineWidth = px(2);
-    ctx.stroke();
-  }
   ctx.restore();
 }
 
