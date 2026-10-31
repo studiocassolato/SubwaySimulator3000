@@ -64,7 +64,11 @@ const SEEDS: Seed[] = [
   S('Castello di Godego', 'residential', 520, 220, 260),
 ];
 
-export const CASTELFRANCO: MapDef = {
+/**
+ * Le coordinate qui sotto sono state disegnate con nord e sud scambiati:
+ * flipNS le ribalta, tranne i paesi vicini già al posto giusto.
+ */
+const DRAWN: MapDef = {
   id: 'castelfranco',
   city: 'Castelfranco Veneto',
   icon: '🏰',
@@ -93,11 +97,11 @@ export const CASTELFRANCO: MapDef = {
   parks: [rect(1760, 1140, 2010, 1380)],
   walls: square(MOAT_IN - 8),
   rails: [
-    // Vicenza – Treviso, che passa a sud del centro
+    // Vicenza – Treviso, che passa a nord del centro dopo il ribaltamento
     P([[-100, 2120], [700, 2140], [1300, 2170], [1800, 2200], [2060, 2250], [2600, 2320], [3200, 2380], [W + 100, 2400]]),
-    // verso Bassano
+    // verso Padova (dopo il ribaltamento)
     P([[2060, 2250], [2350, 2050], [2700, 1600], [2950, 900], [3150, -100]]),
-    // verso Padova
+    // verso Bassano (dopo il ribaltamento)
     P([[2060, 2250], [2000, 2700], [1900, 3200], [1820, H + 100]]),
   ],
   seeds: SEEDS,
@@ -107,3 +111,28 @@ export const CASTELFRANCO: MapDef = {
   focusSize: { w: 1600, h: 1900 },
   welcome: 'Benvenuto a Castelfranco Veneto! Il sindaco ha approvato le prime stazioni attorno al castello: collegale con le linee.',
 };
+
+/** paesi vicini disegnati già nella posizione giusta */
+const KEEP = new Set(['Castello di Godego', 'Resana', 'Vedelago']);
+/** Borgo Padova resta verso Padova, cioè a sud del castello */
+const MOVE: Record<string, Vec> = { 'Borgo Padova': { x: 1880, y: 2650 } };
+
+function flipNS(m: MapDef): MapDef {
+  const f = (p: Vec): Vec => ({ x: p.x, y: m.height - p.y });
+  const fp = (poly: Vec[]) => poly.map(f);
+  return {
+    ...m,
+    land: m.land.map((l) => ({ ...l, poly: fp(l.poly), label: l.label && f(l.label) })),
+    water: m.water.map((w) => ({ poly: fp(w.poly), holes: w.holes?.map(fp) })),
+    waterLabels: m.waterLabels.map((w) => ({ ...w, at: f(w.at) })),
+    extraLabels: m.extraLabels.map((l) => ({ ...l, at: f(l.at) })),
+    parks: m.parks.map(fp),
+    walls: m.walls && fp(m.walls),
+    rails: m.rails?.map(fp),
+    seeds: m.seeds.map((s) => (KEEP.has(s.name) ? s : MOVE[s.name] ? { ...s, ...MOVE[s.name] } : { ...s, y: m.height - s.y })),
+    cores: fp(m.cores),
+    focus: f(m.focus),
+  };
+}
+
+export const CASTELFRANCO: MapDef = flipNS(DRAWN);
