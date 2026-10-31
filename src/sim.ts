@@ -744,7 +744,9 @@ export class Game {
     for (const st of s.stations) {
       if (this.stationLinked(st.id)) {
         st.discontent = Math.max(0, st.discontent - dt * 0.2);
-        if (st.waiting.length >= OVERCROWD_AT) st.crowd += dt;
+        // dopo una crisi il quartiere è già "in castigo" per un giorno: niente nuove crisi lì nel frattempo
+        const cooling = (st.frozenUntil ?? 0) > s.time;
+        if (st.waiting.length >= OVERCROWD_AT && !cooling) st.crowd += dt;
         else st.crowd = Math.max(0, st.crowd - dt * 0.5);
         if (st.crowd >= OVERCROWD_LIMIT) this.crowdCrisis(st, byId);
       } else {
@@ -768,7 +770,7 @@ export class Game {
     st.frozenUntil = s.time + 1440;
     s.satisfaction *= 0.85;
     this.changeRep(this.hard ? -6 : -3);
-    const fine = CRISIS_FINE * s.level;
+    const fine = CRISIS_FINE;
     s.money -= fine;
     s.stats.expensesToday += fine;
     // il quartiere perde un po' di attrattiva
@@ -865,7 +867,7 @@ export class Game {
     // sopra soglia il Comune ti dà un contributo, sotto soglia sei tu a pagare una compensazione
     const grant = s.reputation >= COMPENSATION_BELOW
       ? Math.round(s.reputation * GRANT_PER_REP)
-      : -Math.round((COMPENSATION_BELOW - s.reputation) * COMPENSATION_PER_POINT * s.level);
+      : -Math.round((COMPENSATION_BELOW - s.reputation) * COMPENSATION_PER_POINT);
     s.money += grant;
     if (grant >= 0) s.stats.incomeToday += grant;
     else {

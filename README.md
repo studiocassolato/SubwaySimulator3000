@@ -28,7 +28,7 @@ Ad ogni push su `main` il workflow `.github/workflows/pages.yml` pubblica il gio
 - Più abitanti servi, più sali di livello: più linee, più treni per linea (5 al livello 1, fino a 12) e treni più capienti. Gli obiettivi danno premi in denaro.
 - Imprevisti moderati (guasti, allagamenti nelle gallerie, picchi di domanda, cantieri): si regolano o disattivano dal menu.
 - **Urgenza**:
-  - una stazione con troppa gente in attesa avvia un conto alla rovescia (arco rosso). Allo scadere scatta la crisi: il quartiere perde densità e smette di crescere per un giorno;
+  - una stazione con troppa gente in attesa avvia un conto alla rovescia (arco rosso). Allo scadere scatta la crisi: il quartiere perde densità e smette di crescere per un giorno, e il Comune ti multa ($400). Al massimo una crisi al giorno per stazione;
   - le stazioni non collegate accumulano malcontento (barra arancione). Al 100% i residenti protestano e la fiducia del sindaco cala;
   - il sindaco fa richieste a tempo ("collega X", "porta N persone verso…"), con premi o penalità;
   - la fiducia del sindaco (🏛️) decide quanta parte dei biglietti tieni, quanto costa costruire, il contributo giornaliero e se apre nuove stazioni. Sale ogni giorno con un buon servizio, con le richieste completate e con le donazioni al Comune;
