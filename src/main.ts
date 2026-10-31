@@ -11,6 +11,7 @@ import { GOALS, Game } from './sim';
 import * as storage from './storage';
 import type { Difficulty, GameState, MapId } from './types';
 import { newGame } from './world';
+import { justUpdated, watchForUpdates } from './update';
 
 /** minuti di gioco per secondo reale a velocità 1 (un giorno ≈ 16 minuti) */
 const MINUTES_PER_SECOND = 1.5;
@@ -197,6 +198,22 @@ function toast(text: string, kind: 'info' | 'good' | 'bad' = 'info') {
   setTimeout(() => el.remove(), 4500);
 }
 game.onNotify = toast;
+
+// ---------- aggiornamenti del gioco ----------
+const esc = (t: string) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
+let newBuild = '';
+watchForUpdates((notes, id) => {
+  newBuild = id;
+  $('#update-notes').innerHTML = notes.map((n) => `<li>${esc(n)}</li>`).join('');
+  $('#update').hidden = false;
+});
+$('#update-reload').addEventListener('click', async () => {
+  await autosave();
+  // un indirizzo diverso evita che il browser riusi la pagina vecchia dalla cache
+  location.href = `${location.pathname}?v=${encodeURIComponent(newBuild)}`;
+});
+$('#update-later').addEventListener('click', () => ($('#update').hidden = true));
+if (justUpdated() && __CHANGELOG__.length) setTimeout(() => toast(`Gioco aggiornato: ${__CHANGELOG__[0]}`, 'good'), 1500);
 input.onQuote = (text) => {
   const q = $('#quote');
   q.hidden = !text;
