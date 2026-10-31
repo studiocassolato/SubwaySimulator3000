@@ -5,11 +5,11 @@ import {
 } from './config';
 import { Input } from './input';
 import { Music, type MusicStyle } from './music';
-import { landAt, WORLD_H, WORLD_W } from './nyc';
+import { landAt, MAP, MAP_LIST, MAPS, setMap } from './maps';
 import { render, type Selection } from './render';
 import { GOALS, Game } from './sim';
 import * as storage from './storage';
-import type { Difficulty, GameState } from './types';
+import type { Difficulty, GameState, MapId } from './types';
 import { newGame } from './world';
 
 /** minuti di gioco per secondo reale a velocità 1 (un giorno ≈ 16 minuti) */
@@ -25,7 +25,7 @@ const input = new Input(canvas, cam, game);
 const music = new Music();
 let tab: 'info' | 'lines' | 'goals' | 'log' = 'info';
 let started = false;
-let confirmNew = false;
+let pickMap = false;
 
 // ---------- impostazioni locali (solo comodità per questo browser) ----------
 const prefs = (() => {
@@ -57,12 +57,12 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-function focusManhattan() {
-  cam.x = 1650;
-  cam.y = 2500;
-  cam.zoom = Math.max(0.12, Math.min(0.3, Math.min(cam.w / 1800, cam.h / 2400)));
+function focusCity() {
+  cam.x = MAP.focus.x;
+  cam.y = MAP.focus.y;
+  cam.zoom = Math.max(0.12, Math.min(0.35, Math.min(cam.w / MAP.focusSize.w, cam.h / MAP.focusSize.h)));
 }
-focusManhattan();
+focusCity();
 
 // ---------- ciclo principale ----------
 let last = performance.now();
@@ -437,13 +437,14 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => void autosave());
 
 function startWith(state: GameState) {
+  setMap(state.mapId);
   game.load(state);
   input.select(null);
   started = true;
   game.speed = 1;
   // avviata da un clic, quindi il browser permette l'audio
   if (prefs.music !== false && !music.playing) music.start();
-  focusManhattan();
+  focusCity();
   $<HTMLDialogElement>('#menu').close();
   renderPanel(true);
   updateTopbar();
@@ -465,11 +466,14 @@ async function openMenu() {
   const fmtDate = (t: number) => new Date(t).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
   $('#menu-body').innerHTML = `
     <h2>Subway<b>Simulator3000</b></h2>
-    <p class="muted">Costruisci la metropolitana di New York, un pezzo alla volta.</p>
+    <p class="muted">Costruisci una metropolitana, un pezzo alla volta.</p>
     <div class="btns">
       ${started ? '<button class="btn primary" data-m="resume">▶ Riprendi</button>' : bySlot.has('auto') ? '<button class="btn primary" data-m="load" data-slot="auto">▶ Continua</button>' : ''}
-      <button class="btn ${!started && !bySlot.has('auto') ? 'primary' : ''}" data-m="new">${confirmNew ? 'Sicuro? Tocca di nuovo' : '✨ Nuova partita'}</button>
+      ${pickMap ? '' : `<button class="btn ${!started && !bySlot.has('auto') ? 'primary' : ''}" data-m="new">✨ Nuova partita</button>`}
     </div>
+    ${pickMap ? `<h4>Scegli la città</h4>${started ? '<p class="muted">La partita in corso resta nel salvataggio automatico solo finché non ne inizi una nuova: salvala in uno slot se vuoi tenerla.</p>' : ''}
+      <div class="maps">${MAP_LIST.map((m) => `<button class="mapcard" data-m="start" data-map="${m.id}"><span>${m.icon}</span><b>${m.city}</b><small>${m.blurb}</small></button>`).join('')}</div>
+      <div class="btns"><button class="btn small" data-m="cancel-new">Annulla</button></div>` : ''}
     <h4>Salvataggi</h4>
     ${storage.SLOTS.map((slot) => {
       const rec = bySlot.get(slot);
@@ -493,12 +497,12 @@ async function openMenu() {
       </select>
       <button class="btn small" data-m="music">${music.playing ? '⏸ Ferma' : '▶ Suona'}</button></label>
     <label class="field">Volume <input type="range" min="0" max="1" step="0.05" value="${music.volume}" data-m="volume"></label>
-    <p class="muted" style="font-size:12px">Mappa di New York stilizzata, disegnata a mano. Musica generata dal vivo nel browser, senza brani protetti da copyright. Salvataggi nel browser (IndexedDB): usa "Esporta file" per una copia di sicurezza o per spostarti su un altro dispositivo.</p>`;
+    <p class="muted" style="font-size:12px">Mappe di New York e Castelfranco Veneto stilizzate, disegnate a mano. Musica generata dal vivo nel browser, senza brani protetti da copyright. Salvataggi nel browser (IndexedDB): usa "Esporta file" per una copia di sicurezza o per spostarti su un altro dispositivo.</p>`;
   const dlg = $<HTMLDialogElement>('#menu');
   if (!dlg.open) dlg.showModal();
   dlg.onclose = () => {
     if (started && game.speed === 0) game.speed = prevSpeed || 1;
-    confirmNew = false;
+    pickMap = false;
   };
 }
 
@@ -509,14 +513,18 @@ $('#menu-body').addEventListener('click', async (e) => {
   switch (b.dataset.m) {
     case 'resume': $<HTMLDialogElement>('#menu').close(); break;
     case 'new':
-      if (started && !confirmNew) {
-        confirmNew = true;
-        return openMenu();
-      }
-      confirmNew = false;
-      startWith(newGame());
-      toast('Nuova partita: New York ti aspetta!', 'good');
+      pickMap = true;
+      return openMenu();
+    case 'cancel-new':
+      pickMap = false;
+      return openMenu();
+    case 'start': {
+      pickMap = false;
+      const id = b.dataset.map as MapId;
+      startWith(newGame(id));
+      toast(`Nuova partita: ${MAPS[id].city} ti aspetta!`, 'good');
       break;
+    }
     case 'save':
       await storage.save(slot, game.state);
       toast(`Salvato in ${SLOT_LABEL[slot]}`, 'good');
@@ -564,7 +572,7 @@ $<HTMLInputElement>('#import-file').addEventListener('change', async (e) => {
   (e.target as HTMLInputElement).value = '';
 });
 // per i test automatici e il debug dalla console
-(window as unknown as { ss3000: unknown }).ss3000 = { game, cam, input, startWith, newGame, WORLD_W, WORLD_H };
+(window as unknown as { ss3000: unknown }).ss3000 = { game, cam, input, startWith, newGame, MAP: () => MAP };
 
 renderPanel(true);
 updateTopbar();

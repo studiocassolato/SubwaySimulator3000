@@ -5,9 +5,9 @@ import {
   demandProfile,
 } from './config';
 import { Network } from './network';
-import { landAt } from './nyc';
+import { landAt } from './maps';
 import type { GameEvent, GameState, Line, MayorRequest, Passenger, Station, Train, ZoneType } from './types';
-import { SITE_ORDER, makeStation } from './world';
+import { siteOrder, makeStation } from './world';
 
 /** Passeggeri generati per punto di densità al minuto (prima dei moltiplicatori orari). */
 const DEMAND_K = 0.006;
@@ -109,8 +109,9 @@ export class Game {
   /** Il sindaco approva il prossimo sito in elenco: la stazione compare già costruita. */
   approveStation(): Station | null {
     const s = this.state;
-    while (s.nextSite < SITE_ORDER.length) {
-      const site = SITE_ORDER[s.nextSite++];
+    const order = siteOrder();
+    while (s.nextSite < order.length) {
+      const site = order[s.nextSite++];
       if (s.stations.some((st) => Math.hypot(st.x - site.x, st.y - site.y) < 120)) continue;
       const st = makeStation(this.id(), site);
       s.stations.push(st);

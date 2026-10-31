@@ -1,6 +1,6 @@
 import { COST, STATION_RADIUS, ZONE_TYPES } from './config';
 import { dist, octilinear, polylineLength } from './geometry';
-import { waterCrossings } from './nyc';
+import { waterCrossings } from './maps';
 import type { GameState, Line, Station, Vec, ZoneType } from './types';
 
 export interface LineGeom {

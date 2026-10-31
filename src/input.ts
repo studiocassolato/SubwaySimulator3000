@@ -1,7 +1,7 @@
 import type { Camera } from './camera';
 import { LINE_COLORS } from './config';
 import { distToPolyline } from './geometry';
-import { WORLD_H, WORLD_W } from './nyc';
+import { MAP } from './maps';
 import { lineHandles, type DragPreview, type Selection } from './render';
 import type { Game } from './sim';
 import type { Vec } from './types';
@@ -153,7 +153,7 @@ export class Input {
       m.mid = c;
     } else if (m.kind === 'pan') {
       this.cam.panBy(p.x - prev.x, p.y - prev.y);
-      this.cam.clamp(WORLD_W, WORLD_H);
+      this.cam.clamp(MAP.width, MAP.height);
       m.moved += Math.hypot(p.x - prev.x, p.y - prev.y);
     } else if (m.kind === 'draw') {
       this.updateDraw(m, p);

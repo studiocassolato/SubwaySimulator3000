@@ -1,6 +1,6 @@
 # SubwaySimulator3000
 
-Gioco gestionale di metropolitana nel browser: costruisci la rete di New York, guarda la città crescere dove il servizio è buono, salva e torna a lavorarci quando vuoi.
+Gioco gestionale di metropolitana nel browser: costruisci la rete di New York o di Castelfranco Veneto, guarda la città crescere dove il servizio è buono, salva e torna a lavorarci quando vuoi.
 
 Prototipo per validare le prime meccaniche.
 
@@ -43,7 +43,7 @@ Salvataggio automatico ogni 45 secondi e quando chiudi la scheda, più 3 slot ma
 
 ## Crediti
 
-- Mappa di New York stilizzata, disegnata a mano: non è in scala e non usa dati cartografici esterni.
+- Mappe di New York e Castelfranco Veneto stilizzate, disegnate a mano: non sono in scala e non usano dati cartografici esterni. La città si sceglie da "Nuova partita"; ogni salvataggio ricorda la sua mappa.
 - Musica generata in tempo reale con Web Audio (due atmosfere: jazz di città e chill hop da vlog): nessun brano registrato, nessun copyright di terzi.
 - Font: Space Grotesk (SIL Open Font License) da Google Fonts.
 

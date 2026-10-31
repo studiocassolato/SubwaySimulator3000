@@ -7,6 +7,8 @@ export type ZoneType =
   | 'school'
   | 'leisure';
 
+export type MapId = 'nyc' | 'castelfranco';
+
 export interface Vec {
   x: number;
   y: number;
@@ -121,7 +123,7 @@ export interface GameState {
   /** fiducia del sindaco 0-100: decide i contributi giornalieri */
   reputation: number;
   level: number;
-  mapId: 'nyc';
+  mapId: MapId;
   cells: Cell[];
   stations: Station[];
   lines: Line[];
