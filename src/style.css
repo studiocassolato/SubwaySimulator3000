@@ -153,3 +153,11 @@ select, input[type='range'] { font: inherit; }
   .icon { min-width: 28px; padding: 4px; }
   .speed-wrap { width: 34px; height: 34px; flex-shrink: 0; }
 }
+
+/* scelta della città per una nuova partita */
+.maps { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 8px 0; }
+.mapcard { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; font: inherit; color: inherit; background: #f6f7f9; border: 2px solid var(--line); border-radius: 14px; padding: 12px 14px; cursor: pointer; }
+.mapcard:hover { border-color: var(--accent); background: #eef5fd; }
+.mapcard span { font-size: 30px; line-height: 1; }
+.mapcard b { font-size: 16px; }
+.mapcard small { color: var(--muted); font-size: 13px; }

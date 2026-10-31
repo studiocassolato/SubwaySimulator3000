@@ -1,7 +1,7 @@
 import type { Camera } from './camera';
 import { OVERCROWD_LIMIT, STATION_RADIUS, ZONES } from './config';
 import { octilinear, pointAt } from './geometry';
-import { BROOKLYN_LABEL, CENTRAL_PARK, LAND, SEEDS, WATER_LABELS, WORLD_H, WORLD_W } from './nyc';
+import { MAP } from './maps';
 import type { Game } from './sim';
 import type { Vec } from './types';
 
@@ -86,17 +86,44 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
   };
 
   // terraferma
-  for (const land of LAND) {
-    path(ctx, land.poly, true);
+  for (const poly of MAP.ground ? [MAP.ground] : MAP.land.map((l) => l.poly)) {
+    path(ctx, poly, true);
     ctx.fillStyle = COLORS.land;
     ctx.fill();
+    if (MAP.ground) continue;
     ctx.strokeStyle = COLORS.shore;
     ctx.lineWidth = px(3);
     ctx.stroke();
   }
-  path(ctx, CENTRAL_PARK, true);
-  ctx.fillStyle = '#cfe6c6';
-  ctx.fill();
+  // fiumi e fossati sopra la terraferma (le isole restano fuori grazie a evenodd)
+  for (const w of MAP.water) {
+    ctx.beginPath();
+    for (const poly of [w.poly, ...(w.holes ?? [])]) {
+      poly.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.closePath();
+    }
+    ctx.fillStyle = COLORS.water;
+    ctx.fill('evenodd');
+    ctx.strokeStyle = COLORS.shore;
+    ctx.lineWidth = px(3);
+    ctx.stroke();
+  }
+  for (const pk of MAP.parks) {
+    path(ctx, pk, true);
+    ctx.fillStyle = '#cfe6c6';
+    ctx.fill();
+  }
+  // ferrovie: binario grigio con traversine
+  for (const r of MAP.rails ?? []) {
+    path(ctx, r, false);
+    ctx.strokeStyle = 'rgba(90,90,100,0.45)';
+    ctx.lineWidth = Math.max(px(2), 6);
+    ctx.stroke();
+    ctx.setLineDash([3, 14]);
+    ctx.lineWidth = Math.max(px(5), 16);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
   // isolati
   const night = isNight(state.time);
@@ -133,13 +160,24 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
   }
   if (night) {
     ctx.fillStyle = 'rgba(20,30,70,0.18)';
-    ctx.fillRect(-500, -500, WORLD_W + 1000, WORLD_H + 1000);
+    ctx.fillRect(-500, -500, MAP.width + 1000, MAP.height + 1000);
+  }
+
+  // mura del castello con le torri agli angoli
+  if (MAP.walls) {
+    path(ctx, MAP.walls, true);
+    ctx.strokeStyle = '#b5724f';
+    ctx.lineWidth = Math.max(px(3), 14);
+    ctx.stroke();
+    ctx.fillStyle = '#9c5a3c';
+    const t = Math.max(px(5), 26);
+    for (const p of MAP.walls) ctx.fillRect(p.x - t, p.y - t, t * 2, t * 2);
   }
 
   // etichette geografiche
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  for (const w of WATER_LABELS) {
+  for (const w of MAP.waterLabels) {
     ctx.save();
     ctx.translate(w.at.x, w.at.y);
     ctx.rotate(w.angle);
@@ -148,7 +186,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
     ctx.fillText(w.name, 0, 0);
     ctx.restore();
   }
-  const boroughs = [...LAND.map((l) => ({ name: l.name, at: l.label })), { name: 'BROOKLYN', at: BROOKLYN_LABEL }];
+  const boroughs = [...MAP.land.flatMap((l) => (l.label ? [{ name: l.name, at: l.label }] : [])), ...MAP.extraLabels];
   ctx.font = `700 ${Math.max(px(16), 70)}px ${FONT}`;
   for (const b of boroughs) {
     ctx.fillStyle = 'rgba(31,42,55,0.16)';
@@ -157,7 +195,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
   if (z > 0.42) {
     ctx.font = `600 ${px(11)}px ${FONT}`;
     ctx.fillStyle = 'rgba(31,42,55,0.45)';
-    for (const s of SEEDS) ctx.fillText(s.name.toUpperCase(), s.x, s.y - 46);
+    for (const s of MAP.seeds) ctx.fillText(s.name.toUpperCase(), s.x, s.y - 46);
   }
 
   // bacino d'utenza della stazione selezionata o in costruzione

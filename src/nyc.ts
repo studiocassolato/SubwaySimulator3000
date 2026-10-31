@@ -1,21 +1,14 @@
+import type { LandMass, MapDef, Seed } from './maps';
 import type { Vec, ZoneType } from './types';
 
 /**
  * New York stilizzata, disegnata a mano (non in scala esatta).
  * Coordinate di gioco: x verso est, y verso sud, 1 unità ≈ 8 m.
  */
-export const WORLD_W = 4200;
-export const WORLD_H = 5200;
 
 const P = (pts: [number, number][]): Vec[] => pts.map(([x, y]) => ({ x, y }));
 
-export interface LandMass {
-  name: string;
-  label: Vec;
-  poly: Vec[];
-}
-
-export const LAND: LandMass[] = [
+const LAND: LandMass[] = [
   {
     name: 'NEW JERSEY',
     label: { x: 650, y: 1900 },
@@ -64,9 +57,9 @@ export const LAND: LandMass[] = [
   },
 ];
 
-export const BROOKLYN_LABEL = { x: 2350, y: 3950 };
+const BROOKLYN_LABEL = { x: 2350, y: 3950 };
 
-export const WATER_LABELS: { name: string; at: Vec; angle: number }[] = [
+const WATER_LABELS = [
   { name: 'Hudson River', at: { x: 1440, y: 1350 }, angle: -1.35 },
   { name: 'East River', at: { x: 1880, y: 2720 }, angle: -1.4 },
   { name: 'Harlem River', at: { x: 2035, y: 520 }, angle: -1.55 },
@@ -74,20 +67,11 @@ export const WATER_LABELS: { name: string; at: Vec; angle: number }[] = [
   { name: 'Atlantic Ocean', at: { x: 3300, y: 4900 }, angle: 0 },
 ];
 
-export const CENTRAL_PARK = P([[1650, 1450], [1765, 1470], [1700, 1960], [1585, 1940]]);
-
-/** Quartieri: danno il nome alle stazioni e il tipo di zona agli isolati vicini. */
-export interface Seed {
-  name: string;
-  type: ZoneType;
-  x: number;
-  y: number;
-  r: number;
-}
+const CENTRAL_PARK = P([[1650, 1450], [1765, 1470], [1700, 1960], [1585, 1940]]);
 
 const S = (name: string, type: ZoneType, x: number, y: number, r: number): Seed => ({ name, type, x, y, r });
 
-export const SEEDS: Seed[] = [
+const SEEDS: Seed[] = [
   // Manhattan
   S('Financial District', 'offices', 1420, 3330, 220),
   S('Tribeca', 'residential', 1360, 3050, 200),
@@ -176,41 +160,24 @@ export const SEEDS: Seed[] = [
 ];
 
 /** Centri d'affari: la densità iniziale cala allontanandosi da qui. */
-export const CORES: Vec[] = P([[1640, 2250], [1420, 3330], [1850, 3330], [2110, 1900], [1120, 3150]]);
+const CORES = P([[1640, 2250], [1420, 3330], [1850, 3330], [2110, 1900], [1120, 3150]]);
 
-export function pointInPoly(p: Vec, poly: Vec[]): boolean {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i];
-    const b = poly[j];
-    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
-  }
-  return inside;
-}
-
-export function landAt(p: Vec): LandMass | null {
-  for (const l of LAND) if (pointInPoly(p, l.poly)) return l;
-  return null;
-}
-
-/** Tratti d'acqua attraversati da un segmento: ogni tratto è una galleria. */
-export function waterCrossings(a: Vec, b: Vec): Vec[] {
-  const len = Math.hypot(b.x - a.x, b.y - a.y);
-  const steps = Math.max(2, Math.ceil(len / 12));
-  const out: Vec[] = [];
-  let wasLand = true;
-  let start = 0;
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-    const land = landAt(p) !== null;
-    if (!land && wasLand) start = t;
-    if (land && !wasLand) {
-      const mid = (start + t) / 2;
-      // ignora i tratti minuscoli (spigoli dei poligoni)
-      if ((t - start) * len > 20) out.push({ x: a.x + (b.x - a.x) * mid, y: a.y + (b.y - a.y) * mid });
-    }
-    wasLand = land;
-  }
-  return out;
-}
+export const NYC: MapDef = {
+  id: 'nyc',
+  city: 'New York',
+  icon: '🗽',
+  blurb: 'Cinque distretti, fiumi da attraversare in galleria e una domanda enorme.',
+  width: 4200,
+  height: 5200,
+  land: LAND,
+  water: [],
+  waterLabels: WATER_LABELS,
+  extraLabels: [{ name: 'BROOKLYN', at: BROOKLYN_LABEL }],
+  parks: [CENTRAL_PARK],
+  seeds: SEEDS,
+  cores: CORES,
+  denseArea: 'MANHATTAN',
+  focus: { x: 1650, y: 2500 },
+  focusSize: { w: 1800, h: 2400 },
+  welcome: 'Benvenuto a New York! Il sindaco ha approvato le prime stazioni: collegale con le linee.',
+};
