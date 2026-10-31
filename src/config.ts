@@ -46,15 +46,17 @@ export interface LevelInfo {
   population: number;
   maxLines: number;
   trainCapacity: number;
+  /** treni al massimo su ogni linea */
+  maxTrains: number;
   unlock: string;
 }
 
 export const LEVELS: LevelInfo[] = [
-  { population: 0, maxLines: 3, trainCapacity: 6, unlock: 'Inizio: 3 linee, treni da 6 posti' },
-  { population: 200000, maxLines: 4, trainCapacity: 6, unlock: 'Livello 2: quarta linea' },
-  { population: 450000, maxLines: 5, trainCapacity: 8, unlock: 'Livello 3: quinta linea, treni da 8 posti' },
-  { population: 800000, maxLines: 6, trainCapacity: 10, unlock: 'Livello 4: sesta linea, treni da 10 posti' },
-  { population: 1300000, maxLines: 8, trainCapacity: 12, unlock: 'Livello 5: 8 linee, treni da 12 posti' },
+  { population: 0, maxLines: 3, trainCapacity: 6, maxTrains: 5, unlock: 'Inizio: 3 linee, 5 treni per linea, treni da 6 posti' },
+  { population: 200000, maxLines: 4, trainCapacity: 6, maxTrains: 6, unlock: 'Livello 2: quarta linea, 6 treni per linea' },
+  { population: 450000, maxLines: 5, trainCapacity: 8, maxTrains: 8, unlock: 'Livello 3: quinta linea, 8 treni per linea, treni da 8 posti' },
+  { population: 800000, maxLines: 6, trainCapacity: 10, maxTrains: 10, unlock: 'Livello 4: sesta linea, 10 treni per linea, treni da 10 posti' },
+  { population: 1300000, maxLines: 8, trainCapacity: 12, maxTrains: 12, unlock: 'Livello 5: 8 linee, 12 treni per linea, treni da 12 posti' },
 ];
 
 /** Quanti abitanti (o addetti) vale un punto di densità per tipo di zona */

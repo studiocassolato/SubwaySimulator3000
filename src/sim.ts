@@ -323,8 +323,13 @@ export class Game {
       this.onNotify(`${line.name} è in gestione al Comune: riscattala per modificarla`, 'bad');
       return ;
     }
-    if (!line || !this.spend(this.trainCost, 'un nuovo treno')) return;
+    if (!line) return;
     const others = this.state.trains.filter((t) => t.lineId === line.id);
+    if (others.length >= this.levelInfo.maxTrains) {
+      this.onNotify(`${line.name} ha già ${this.levelInfo.maxTrains} treni, il massimo per il livello ${this.state.level}: sali di livello per aggiungerne`, 'bad');
+      return;
+    }
+    if (!this.spend(this.trainCost, 'un nuovo treno')) return;
     const t = this.makeTrain(line);
     if (others.length) {
       // il nuovo treno entra a metà del buco più grande tra i treni esistenti

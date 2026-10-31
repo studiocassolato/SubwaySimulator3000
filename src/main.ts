@@ -266,7 +266,10 @@ function infoHtml(): string {
     if (!st) return helpHtml();
     const serves = [...(game.net.serves.get(st.id) ?? [])];
     const lines = game.net.linesAt.get(st.id) ?? [];
-    const unmet = [...(game.unmet.get(st.id) ?? new Map()).entries()].sort((a, b) => b[1] - a[1]);
+    // il conteggio si azzera solo a mezzanotte: nasconde le destinazioni che nel frattempo una linea ha reso raggiungibili
+    const unmet = [...(game.unmet.get(st.id) ?? new Map()).entries()]
+      .filter(([t]) => game.net.hopsTo(t, st.id) === Infinity)
+      .sort((a, b) => b[1] - a[1]);
     const closed = s.events.some((e) => e.kind === 'works' && e.stationId === st.id);
     const linked = lines.length > 0;
     const frozen = st.frozenUntil && s.time < st.frozenUntil;
@@ -305,9 +308,9 @@ function infoHtml(): string {
     return `
       <h3><span class="swatch" style="display:inline-block;background:${line.color}"></span> ${line.name}</h3>
       <p class="muted">${line.stations.length} fermate · ${tunnels} gallerie · ${aboard} passeggeri a bordo</p>
-      <div class="row"><span class="grow">🚆 Treni: <b>${trains.length}</b> <span class="muted">(${game.levelInfo.trainCapacity} posti)</span></span>
+      <div class="row"><span class="grow">🚆 Treni: <b>${trains.length}/${game.levelInfo.maxTrains}</b> <span class="muted">(${game.levelInfo.trainCapacity} posti)</span></span>
         <button class="btn small" data-action="train-remove" data-id="${line.id}">−</button>
-        <button class="btn small" data-action="train-add" data-id="${line.id}">+ ${fmtMoney(game.trainCost)}</button></div>
+        <button class="btn small" data-action="train-add" data-id="${line.id}" ${trains.length >= game.levelInfo.maxTrains ? 'disabled title="Massimo treni per questo livello"' : ''}>+ ${fmtMoney(game.trainCost)}</button></div>
       <h4>Fermate</h4>
       ${line.stations.map((id) => {
         const st = game.net.stationById.get(id)!;
@@ -367,9 +370,9 @@ function linesHtml(): string {
   const s = game.state;
   const rows = s.lines.map((l) => {
     const trains = s.trains.filter((t) => t.lineId === l.id).length;
-    return `<div class="row"><span class="swatch" style="background:${l.color}"></span><span class="grow">${l.seized ? '🏛️ ' : ''}${l.name}<br><small class="muted">${l.seized ? 'gestita dal Comune · ' : ''}${l.stations.length} fermate · ${trains} treni</small></span>
+    return `<div class="row"><span class="swatch" style="background:${l.color}"></span><span class="grow">${l.seized ? '🏛️ ' : ''}${l.name}<br><small class="muted">${l.seized ? 'gestita dal Comune · ' : ''}${l.stations.length} fermate · ${trains}/${game.levelInfo.maxTrains} treni</small></span>
       <button class="btn small" data-action="train-remove" data-id="${l.id}">−</button>
-      <button class="btn small" data-action="train-add" data-id="${l.id}">+🚆</button>
+      <button class="btn small" data-action="train-add" data-id="${l.id}" ${trains >= game.levelInfo.maxTrains ? 'disabled' : ''}>+🚆</button>
       <button class="btn small" data-action="select-line" data-id="${l.id}">Apri</button></div>`;
   });
   return `<h3>Linee ${s.lines.length}/${game.levelInfo.maxLines}</h3>
