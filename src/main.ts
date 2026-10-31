@@ -198,6 +198,20 @@ input.onSelect = (s: Selection) => {
   renderPanel(true);
 };
 game.onChange = () => renderPanel();
+// avviso bloccante: il gioco si ferma finché non si preme OK, poi riparte a velocità 1
+game.onAlert = (title, html) => {
+  game.speed = 0;
+  $('#alert-title').textContent = title;
+  $('#alert-body').innerHTML = html;
+  const dlg = $<HTMLDialogElement>('#alert');
+  if (!dlg.open) dlg.showModal();
+  updateTopbar();
+};
+$('#alert-ok').addEventListener('click', () => $<HTMLDialogElement>('#alert').close());
+$<HTMLDialogElement>('#alert').addEventListener('close', () => {
+  game.speed = 1;
+  updateTopbar();
+});
 
 // ---------- pannello laterale / foglio dal basso ----------
 const panel = $('#panel');

@@ -52,6 +52,8 @@ export class Game {
   paused = false;
   onNotify: Notify = () => {};
   onChange: () => void = () => {};
+  /** avvisi importanti che mettono in pausa il gioco */
+  onAlert: (title: string, html: string) => void = () => {};
 
   constructor(public state: GameState) {
     this.net = new Network(state);
@@ -173,6 +175,17 @@ export class Game {
     worst.seized = true;
     this.net.rebuild();
     this.log(`🏛️ Il sindaco ha preso in gestione la ${worst.name}: non puoi usarla né collegarti finché non la riscatti (fiducia ${BUYBACK_FROM}+)`, 'bad');
+    const names = worst.stations.map((id) => this.net.stationById.get(id)!.name).join(', ');
+    this.onAlert(
+      `🏛️ Il sindaco si è preso la ${worst.name}`,
+      `<p>La fiducia del sindaco è scesa sotto ${SEIZE_BELOW}: il Comune ha preso in gestione la tua linea con il servizio peggiore (${names}).</p>
+      <ul>
+        <li>La linea resta sulla mappa, grigia e tratteggiata: i treni girano ma <b>non portano i tuoi passeggeri</b>.</li>
+        <li>Non puoi modificarla, aggiungere treni né <b>collegarti alle sue stazioni</b> con altre linee.</li>
+        <li>Quando la fiducia torna almeno a <b>${BUYBACK_FROM}</b> puoi riscattarla a pagamento dal pannello della linea.</li>
+      </ul>
+      <p>Per recuperare fiducia: collega più stazioni, evita il sovraffollamento, completa le richieste del sindaco o fai una donazione al Comune (pannello Obiettivi).</p>`,
+    );
     this.onChange();
   }
 
