@@ -71,6 +71,8 @@ export interface Line {
   stations: number[];
   /** linea presa in gestione dal Comune: il giocatore non la usa né la modifica finché non la riscatta */
   seized?: boolean;
+  /** vagoni per treno (1 = solo la motrice): più posti, più costi */
+  cars?: number;
 }
 
 export interface Train {

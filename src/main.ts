@@ -1,7 +1,7 @@
 import './style.css';
 import { Camera } from './camera';
 import {
-  BUYBACK_FROM, COMPENSATION_BELOW, COMPENSATION_PER_POINT, COST, DONATION_REP, GRANT_PER_REP, LEVELS, MIN_REP_FOR_STATIONS, SEIZE_BELOW, OVERCROWD_LIMIT, ZONES, ZONE_TYPES, costMult, fareShare,
+  BUYBACK_FROM, COMPENSATION_BELOW, COMPENSATION_PER_POINT, COST, DONATION_REP, GRANT_PER_REP, LEVELS, MIN_REP_FOR_STATIONS, SEIZE_BELOW, OVERCROWD_LIMIT, ZONES, ZONE_TYPES, costMult, fareShare, stationUpkeep, trainUpkeep, MAX_CARS, wagonUpkeep,
 } from './config';
 import { Input } from './input';
 import { Music, type MusicStyle } from './music';
@@ -325,9 +325,12 @@ function infoHtml(): string {
     return `
       <h3><span class="swatch" style="display:inline-block;background:${line.color}"></span> ${line.name}</h3>
       <p class="muted">${line.stations.length} fermate · ${tunnels} gallerie · ${aboard} passeggeri a bordo</p>
-      <div class="row"><span class="grow">🚆 Treni: <b>${trains.length}/${game.levelInfo.maxTrains}</b> <span class="muted">(${game.levelInfo.trainCapacity} posti)</span></span>
+      <div class="row"><span class="grow">🚆 Treni: <b>${trains.length}/${game.levelInfo.maxTrains}</b> <span class="muted">(${game.capacityOf(line)} posti)</span></span>
         <button class="btn small" data-action="train-remove" data-id="${line.id}">−</button>
-        <button class="btn small" data-action="train-add" data-id="${line.id}" ${trains.length >= game.levelInfo.maxTrains ? 'disabled title="Massimo treni per questo livello"' : ''}>+ ${fmtMoney(game.trainCost)}</button></div>
+        <button class="btn small" data-action="train-add" data-id="${line.id}" ${trains.length >= game.levelInfo.maxTrains ? 'disabled title="Massimo treni per questo livello"' : ''}>+ ${fmtMoney(game.lineTrainCost(line))}</button></div>
+      <div class="row"><span class="grow">🚃 Vagoni per treno: <b>${line.cars ?? 1}/${MAX_CARS}</b> <span class="muted">(${game.capacityOf(line)} posti, manutenzione ${fmtMoney(wagonUpkeep(s.level))} per vagone)</span></span>
+        <button class="btn small" data-action="car-remove" data-id="${line.id}" ${(line.cars ?? 1) <= 1 ? 'disabled' : ''}>−</button>
+        <button class="btn small" data-action="car-add" data-id="${line.id}" ${(line.cars ?? 1) >= MAX_CARS ? 'disabled' : ''}>+ ${fmtMoney(game.wagonCost(line))}</button></div>
       <h4>Fermate</h4>
       ${line.stations.map((id) => {
         const st = game.net.stationById.get(id)!;
@@ -394,7 +397,7 @@ function linesHtml(): string {
   });
   return `<h3>Linee ${s.lines.length}/${game.levelInfo.maxLines}</h3>
     ${rows.length ? rows.join('') : '<p class="muted">Nessuna linea ancora. Trascina da una stazione all\'altra per aprirne una.</p>'}
-    <p class="muted">Manutenzione giornaliera: ${fmtMoney(COST.trainUpkeepPerDay)} per treno, ${fmtMoney(COST.stationUpkeepPerDay)} per stazione.</p>`;
+    <p class="muted">Manutenzione giornaliera: ${fmtMoney(trainUpkeep(s.level))} per treno, ${fmtMoney(stationUpkeep(s.level))} per stazione (cresce col livello).</p>`;
 }
 
 function goalsHtml(): string {
@@ -428,6 +431,8 @@ $('#panel-body').addEventListener('click', (e) => {
     case 'select-line': input.select({ kind: 'line', id }); break;
     case 'train-add': game.addTrain(id); break;
     case 'train-remove': game.removeTrain(id); break;
+    case 'car-add': game.addCar(id); break;
+    case 'car-remove': game.removeCar(id); break;
     case 'unlink': game.removeStationFromLine(Number(b.dataset.line), id); break;
     case 'delete-line': game.deleteLine(id); input.select(null); break;
     case 'buyback': game.buyback(id); break;

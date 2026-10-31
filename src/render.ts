@@ -7,6 +7,9 @@ import type { Vec } from './types';
 
 export const FONT = '"Space Grotesk", "Segoe UI", system-ui, sans-serif';
 
+/** colore degli isolati lontani dalle stazioni */
+const NEUTRAL_ZONE = { color: '#bdb8ad' };
+
 export const COLORS = {
   water: '#a9cfe4',
   waterDeep: '#93c0da',
@@ -127,32 +130,25 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
 
   // isolati
   const night = isNight(state.time);
+  // solo gli isolati serviti da una stazione mostrano il colore della zona: il resto della città è neutro
+  const nearStation = new Set<number>();
+  for (const ids of net.catchment.values()) for (const id of ids) nearStation.add(id);
   for (const c of state.cells) {
     if (c.x > view.x1 || c.y > view.y1 || c.x + c.w < view.x0 || c.y + c.h < view.y0) continue;
-    const info = ZONES[c.type];
-    if (c.density === 0) {
-      ctx.strokeStyle = 'rgba(120,120,120,0.25)';
-      ctx.lineWidth = px(1);
-      ctx.strokeRect(c.x + 6, c.y + 6, c.w - 12, c.h - 12);
-      continue;
-    }
-    ctx.globalAlpha = 0.28 + c.density * 0.13;
-    ctx.fillStyle = info.color;
-    roundRect(ctx, c.x, c.y, c.w, c.h, 8);
-    ctx.fill();
+    if (c.density === 0) continue;
+    // niente rettangoli né bordi: le celle si toccano e formano macchie uniformi
+    const near = nearStation.has(c.id);
+    ctx.globalAlpha = near ? 0.22 + c.density * 0.1 : 0.05 + c.density * 0.035;
+    ctx.fillStyle = near ? ZONES[c.type].color : NEUTRAL_ZONE.color;
+    ctx.fillRect(c.x - 5, c.y - 5, c.w + 10, c.h + 10);
     ctx.globalAlpha = 1;
-    if (z > 0.5) {
-      // tacche di densità
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      for (let i = 0; i < c.density; i++) ctx.fillRect(c.x + 6 + i * 9, c.y + c.h - 11, 6, 5);
-    }
   }
   if (z > 0.38) {
     ctx.font = `${30}px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (const c of state.cells) {
-      if (!c.density || c.x > view.x1 || c.y > view.y1 || c.x + c.w < view.x0 || c.y + c.h < view.y0) continue;
+      if (!c.density || !nearStation.has(c.id) || c.x > view.x1 || c.y > view.y1 || c.x + c.w < view.x0 || c.y + c.h < view.y0) continue;
       // un'icona ogni tanto basta a riconoscere la zona senza affollare
       if (z < 0.8 && (c.id % 3 !== 0) && c.type !== 'hospital') continue;
       ctx.fillText(ZONES[c.type].icon, c.x + c.w / 2, c.y + c.h / 2 - 3);
@@ -306,17 +302,24 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(angle);
-    const w = px(26);
+    const cars = line.cars ?? 1;
+    const carW = px(26);
+    const gap = px(2);
+    const w = carW * cars + gap * (cars - 1);
     const h = px(13);
-    roundRect(ctx, -w / 2, -h / 2, w, h, px(3));
-    ctx.fillStyle = t.brokenFor > 0 ? '#555' : line.seized ? '#8a8f98' : line.color;
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = px(1.5);
-    ctx.stroke();
-    t.passengers.slice(0, 12).forEach((pa, i) => {
-      const col = i % 6;
-      const row = Math.floor(i / 6);
+    for (let k = 0; k < cars; k++) {
+      roundRect(ctx, -w / 2 + k * (carW + gap), -h / 2, carW, h, px(3));
+      ctx.fillStyle = t.brokenFor > 0 ? '#555' : line.seized ? '#8a8f98' : line.color;
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = px(1.5);
+      ctx.stroke();
+    }
+    t.passengers.slice(0, 12 * cars).forEach((pa, i) => {
+      const car = Math.floor(i / 12);
+      const j = i % 12;
+      const col = (j % 6) + car * ((carW + gap) / px(4));
+      const row = Math.floor(j / 6);
       ctx.fillStyle = ZONES[pa.dest].color;
       ctx.beginPath();
       ctx.arc(-w / 2 + px(3) + col * px(4), -h / 2 + px(3.5) + row * px(5.5), px(1.7), 0, Math.PI * 2);

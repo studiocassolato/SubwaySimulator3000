@@ -1,7 +1,7 @@
 import {
   BUYBACK_FROM, COMPENSATION_BELOW, COMPENSATION_PER_POINT, COST, CRISIS_FINE, DISCONTENT_MINUTES, DONATION_BASE,
   DONATION_REP, SEIZE_BELOW, DWELL, FARE_BASE, FARE_PER_HOP, GRANT_PER_REP, LEVELS, LINE_COLORS, MAX_WAIT,
-  MIN_REP_FOR_STATIONS, OVERCROWD_AT, OVERCROWD_LIMIT, costMult, fareShare, POP_PER_DENSITY, RAMP_DAYS, STATION_CAPACITY, TRAIN_SPEED, ZONES, ZONE_TYPES,
+  MIN_REP_FOR_STATIONS, MAX_CARS, WAGON_COST, wagonUpkeep, demandMult, stationUpkeep, trainUpkeep, OVERCROWD_AT, OVERCROWD_LIMIT, costMult, fareShare, POP_PER_DENSITY, RAMP_DAYS, STATION_CAPACITY, TRAIN_SPEED, ZONES, ZONE_TYPES,
   demandProfile,
 } from './config';
 import { Network } from './network';
@@ -134,6 +134,41 @@ export class Game {
 
   get trainCost() {
     return Math.round(COST.train * this.costMult);
+  }
+
+  /** Costo di un vagone in più su tutti i treni della linea. */
+  wagonCost(line: Line) {
+    const trains = this.state.trains.filter((t) => t.lineId === line.id).length;
+    return Math.round(WAGON_COST * trains * this.costMult);
+  }
+
+  /** Costo di un treno nuovo per questa linea, vagoni compresi. */
+  lineTrainCost(line: Line) {
+    return this.trainCost + Math.round(WAGON_COST * ((line.cars ?? 1) - 1) * this.costMult);
+  }
+
+  addCar(lineId: number) {
+    const line = this.state.lines.find((l) => l.id === lineId);
+    if (!line || line.seized) return;
+    if ((line.cars ?? 1) >= MAX_CARS) {
+      this.onNotify(`I treni della ${line.name} hanno già ${MAX_CARS} vagoni`, 'bad');
+      return;
+    }
+    if (!this.spend(this.wagonCost(line), 'i vagoni')) return;
+    line.cars = (line.cars ?? 1) + 1;
+    this.onNotify(`${line.name}: ora ogni treno ha ${line.cars} vagoni (${this.capacityOf(line)} posti)`, 'good');
+    this.onChange();
+  }
+
+  removeCar(lineId: number) {
+    const line = this.state.lines.find((l) => l.id === lineId);
+    if (!line || line.seized || (line.cars ?? 1) <= 1) return;
+    line.cars = (line.cars ?? 1) - 1;
+    this.onChange();
+  }
+
+  capacityOf(line: Line) {
+    return this.levelInfo.trainCapacity * (line.cars ?? 1);
   }
 
   detourCost(a: number, via: number, b: number) {
@@ -329,7 +364,7 @@ export class Game {
       this.onNotify(`${line.name} ha già ${this.levelInfo.maxTrains} treni, il massimo per il livello ${this.state.level}: sali di livello per aggiungerne`, 'bad');
       return;
     }
-    if (!this.spend(this.trainCost, 'un nuovo treno')) return;
+    if (!this.spend(this.lineTrainCost(line), 'un nuovo treno')) return;
     const t = this.makeTrain(line);
     if (others.length) {
       // il nuovo treno entra a metà del buco più grande tra i treni esistenti
@@ -508,7 +543,7 @@ export class Game {
         const c = byId.get(cid)!;
         if (!c.density) continue;
         const prof = demandProfile(c.type, hour);
-        let rate = c.density * prof.rate * DEMAND_K * dt * ramp;
+        let rate = c.density * prof.rate * DEMAND_K * demandMult(s.level) * dt * ramp;
         if (peaks.has(c.id)) rate *= 5;
         if (Math.random() >= rate) continue;
         const dest = pickWeighted(prof.dest);
@@ -606,7 +641,7 @@ export class Game {
     }
     t.passengers = stay;
 
-    const cap = this.levelInfo.trainCapacity;
+    const cap = this.capacityOf(line);
     const left: Passenger[] = [];
     for (const p of st.waiting) {
       if (t.passengers.length < cap && this.net.hopsTo(p.dest, next) < this.net.hopsTo(p.dest, st.id)) {
@@ -856,7 +891,11 @@ export class Game {
   private daily() {
     const s = this.state;
     const myTrains = s.trains.filter((t) => !s.lines.find((l) => l.id === t.lineId)?.seized).length;
-    const upkeep = myTrains * COST.trainUpkeepPerDay + s.stations.length * COST.stationUpkeepPerDay;
+    const wagons = s.trains.reduce((a, t) => {
+      const l = s.lines.find((x) => x.id === t.lineId);
+      return a + (l && !l.seized ? (l.cars ?? 1) - 1 : 0);
+    }, 0);
+    const upkeep = myTrains * trainUpkeep(s.level) + wagons * wagonUpkeep(s.level) + s.stations.length * stationUpkeep(s.level);
     s.money -= upkeep;
     s.stats.expensesToday += upkeep;
     // il sindaco giudica il servizio della giornata: copertura delle stazioni e soddisfazione

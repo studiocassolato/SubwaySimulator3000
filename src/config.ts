@@ -33,6 +33,17 @@ export const COST = {
   stationUpkeepPerDay: 10,
 };
 
+/** Manutenzione giornaliera di un treno: cresce col livello (rete più grande, più personale). */
+export const trainUpkeep = (level: number) => COST.trainUpkeepPerDay + 100 * (level - 1);
+/** Manutenzione giornaliera di una stazione. */
+export const stationUpkeep = (level: number) => COST.stationUpkeepPerDay * level;
+/** Più la città cresce, più gente vuole muoversi: moltiplicatore della domanda per livello. */
+/** Vagoni: al massimo per treno, costo di ciascuno (per ogni treno della linea) e manutenzione giornaliera */
+export const MAX_CARS = 3;
+export const WAGON_COST = 450;
+export const wagonUpkeep = (level: number) => 40 * level;
+export const demandMult = (level: number) => 1 + 0.15 * (level - 1);
+
 export const FARE_BASE = 3;
 export const FARE_PER_HOP = 1;
 
