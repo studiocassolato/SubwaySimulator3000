@@ -36,6 +36,10 @@ Ad ogni push su `main` il workflow `.github/workflows/pages.yml` pubblica il gio
 - La domanda di una stazione appena collegata parte bassa e cresce in circa un giorno e mezzo.
 - Nessun game over. Pausa e velocità dalla barra in alto (tastiera: spazio, 1, 2, 3).
 
+## Aggiornamenti
+
+Ogni build pubblica `version.json`. Il gioco lo ricontrolla ogni 5 minuti e quando torni sulla scheda: se è uscita una versione nuova mostra un riquadro con le novità e il bottone "Aggiorna ora", che salva la partita e ricarica. Le novità si scrivono in `changelog.json`, con la voce più recente in cima.
+
 ## Salvataggi
 
 Salvataggio automatico ogni 45 secondi e quando chiudi la scheda, più 3 slot manuali (IndexedDB nel browser).
