@@ -266,7 +266,10 @@ function infoHtml(): string {
     if (!st) return helpHtml();
     const serves = [...(game.net.serves.get(st.id) ?? [])];
     const lines = game.net.linesAt.get(st.id) ?? [];
-    const unmet = [...(game.unmet.get(st.id) ?? new Map()).entries()].sort((a, b) => b[1] - a[1]);
+    // il conteggio si azzera solo a mezzanotte: nasconde le destinazioni che nel frattempo una linea ha reso raggiungibili
+    const unmet = [...(game.unmet.get(st.id) ?? new Map()).entries()]
+      .filter(([t]) => game.net.hopsTo(t, st.id) === Infinity)
+      .sort((a, b) => b[1] - a[1]);
     const closed = s.events.some((e) => e.kind === 'works' && e.stationId === st.id);
     const linked = lines.length > 0;
     const frozen = st.frozenUntil && s.time < st.frozenUntil;
