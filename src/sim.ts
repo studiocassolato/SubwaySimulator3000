@@ -1,6 +1,6 @@
 import {
-  COST, DISCONTENT_MINUTES, DWELL, FARE_BASE, FARE_PER_HOP, GRANT_PER_REP, LEVELS, LINE_COLORS, MAX_WAIT,
-  OVERCROWD_AT, OVERCROWD_LIMIT, POP_PER_DENSITY, RAMP_DAYS, STATION_CAPACITY, TRAIN_SPEED, ZONES, ZONE_TYPES,
+  COST, CRISIS_FINE, DISCONTENT_MINUTES, DWELL, FARE_BASE, FARE_PER_HOP, GRANT_PER_REP, LEVELS, LINE_COLORS, MAX_WAIT,
+  MIN_REP_FOR_STATIONS, OVERCROWD_AT, OVERCROWD_LIMIT, costMult, fareShare, POP_PER_DENSITY, RAMP_DAYS, STATION_CAPACITY, TRAIN_SPEED, ZONES, ZONE_TYPES,
   demandProfile,
 } from './config';
 import { Network } from './network';
@@ -123,6 +123,20 @@ export class Game {
     return (this.net.linesAt.get(id)?.length ?? 0) > 0;
   }
 
+  /** Effetto della fiducia del sindaco sui costi di costruzione. */
+  get costMult() {
+    return costMult(this.state.reputation);
+  }
+
+  get trainCost() {
+    return Math.round(COST.train * this.costMult);
+  }
+
+  detourCost(a: number, via: number, b: number) {
+    const extra = this.net.trackCost([a, via, b]).cost - this.net.trackCost([a, b]).cost;
+    return Math.round(Math.max(0, extra) * this.costMult);
+  }
+
   canAddLine(): boolean {
     return this.state.lines.length < this.levelInfo.maxLines;
   }
@@ -130,7 +144,7 @@ export class Game {
   /** Costo per creare/estendere una linea con le stazioni date (in ordine). */
   quote(stations: number[], isNew: boolean): { cost: number; tunnels: number } {
     const t = this.net.trackCost(stations);
-    return { cost: t.cost + (isNew ? COST.train : 0), tunnels: t.tunnels };
+    return { cost: Math.round((t.cost + (isNew ? COST.train : 0)) * this.costMult), tunnels: t.tunnels };
   }
 
   createLine(stations: number[]): Line | null {
@@ -174,9 +188,7 @@ export class Game {
     if (!line || line.stations.includes(stationId)) return false;
     const a = line.stations[idx];
     const b = line.stations[idx + 1];
-    const oldCost = this.net.trackCost([a, b]).cost;
-    const newCost = this.net.trackCost([a, stationId, b]).cost;
-    if (!this.spend(Math.max(0, newCost - oldCost), 'la deviazione')) return false;
+    if (!this.spend(this.detourCost(a, stationId, b), 'la deviazione')) return false;
     const before = this.snapshotTrains(line);
     line.stations.splice(idx + 1, 0, stationId);
     this.afterLineChange(line, before);
@@ -210,7 +222,7 @@ export class Game {
 
   addTrain(lineId: number) {
     const line = this.state.lines.find((l) => l.id === lineId);
-    if (!line || !this.spend(COST.train, 'un nuovo treno')) return;
+    if (!line || !this.spend(this.trainCost, 'un nuovo treno')) return;
     const others = this.state.trains.filter((t) => t.lineId === line.id);
     const t = this.makeTrain(line);
     if (others.length) {
@@ -463,7 +475,7 @@ export class Game {
     for (const p of t.passengers) {
       const here = this.net.hopsTo(p.dest, st.id);
       if (here === 0) {
-        const fare = Math.round(FARE_BASE + FARE_PER_HOP * p.hops);
+        const fare = Math.round((FARE_BASE + FARE_PER_HOP * p.hops) * fareShare(s.reputation));
         s.money += fare;
         s.stats.incomeToday += fare;
         s.stats.delivered++;
@@ -525,7 +537,10 @@ export class Game {
     this.checkRequests();
     this.maybeRequest();
     // ogni mattina il sindaco approva una nuova stazione
-    if (Math.floor(s.time / 60) % 24 === 6 && s.time > 1440) this.approveStation();
+    if (Math.floor(s.time / 60) % 24 === 6 && s.time > 1440) {
+      if (s.reputation >= MIN_REP_FOR_STATIONS) this.approveStation();
+      else this.log(`🏛️ Il sindaco blocca i nuovi cantieri: la sua fiducia è sotto ${MIN_REP_FOR_STATIONS}`, 'bad');
+    }
     // di notte, con poca gente in giro, le linee ripartono con i treni equidistanziati
     if (Math.floor(s.time / 60) % 24 === 3) for (const line of s.lines) this.respace(line);
     this.onChange();
@@ -625,7 +640,7 @@ export class Game {
         const pop = (this.net.catchment.get(st.id) ?? []).reduce((a, id) => a + (byId.get(id)?.density ?? 0), 0);
         st.discontent += (dt / fill) * 100 * Math.min(1.6, Math.max(0.4, pop / 40));
         if (st.discontent >= 100) {
-          st.discontent = 40;
+          st.discontent = 0;
           this.changeRep(this.hard ? -5 : -3);
           this.log(`📣 Gli abitanti di ${st.name} protestano: vogliono la metro! Fiducia del sindaco in calo`, 'bad');
         }
@@ -640,12 +655,15 @@ export class Game {
     st.waiting = [];
     st.frozenUntil = s.time + 1440;
     s.satisfaction *= 0.85;
-    this.changeRep(this.hard ? -8 : -5);
+    this.changeRep(this.hard ? -6 : -3);
+    const fine = CRISIS_FINE * s.level;
+    s.money -= fine;
+    s.stats.expensesToday += fine;
     // il quartiere perde un po' di attrattiva
     const cells = (this.net.catchment.get(st.id) ?? []).map((id) => byId.get(id)!).filter((c) => c.density > 1);
     for (let i = 0; i < 2 && cells.length; i++) cells.splice(Math.floor(Math.random() * cells.length), 1)[0].density--;
     this.net.rebuild();
-    this.log(`🚨 Crisi a ${st.name}: stazione sovraffollata troppo a lungo. Il quartiere smette di crescere per un giorno`, 'bad');
+    this.log(`🚨 Crisi a ${st.name}: stazione sovraffollata troppo a lungo. Multa del Comune $${fine}, il quartiere smette di crescere per un giorno`, 'bad');
   }
 
   private maybeRequest() {
@@ -726,6 +744,11 @@ export class Game {
     const upkeep = s.trains.length * COST.trainUpkeepPerDay + s.stations.length * COST.stationUpkeepPerDay;
     s.money -= upkeep;
     s.stats.expensesToday += upkeep;
+    // il sindaco giudica il servizio della giornata: copertura delle stazioni e soddisfazione
+    const linked = s.stations.filter((st) => this.stationLinked(st.id)).length;
+    const coverage = s.stations.length ? linked / s.stations.length : 0;
+    const drift = Math.round(Math.max(-4, Math.min(6, (coverage - 0.5) * 10 + (s.satisfaction - 60) / 8)));
+    this.changeRep(drift);
     const grant = Math.round(s.reputation * GRANT_PER_REP);
     s.money += grant;
     s.stats.incomeToday += grant;
@@ -735,7 +758,7 @@ export class Game {
     s.stats.expensesToday = 0;
     this.unmet.clear();
     const day = Math.floor(s.time / 1440) + 1;
-    this.log(`Inizia il giorno ${day}. Contributo del Comune: $${grant}. Ieri: incassi $${s.stats.lastDayIncome}, spese $${s.stats.lastDayExpenses}`);
+    this.log(`Inizia il giorno ${day}. Giudizio del sindaco: ${drift >= 0 ? '+' : ''}${drift} fiducia (${Math.round(coverage * 100)}% stazioni collegate). Contributo del Comune: $${grant}. Ieri: incassi $${s.stats.lastDayIncome}, spese $${s.stats.lastDayExpenses}`);
   }
 }
 

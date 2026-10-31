@@ -1,6 +1,6 @@
 import './style.css';
 import { Camera } from './camera';
-import { COST, GRANT_PER_REP, LEVELS, OVERCROWD_LIMIT, ZONES, ZONE_TYPES } from './config';
+import { COST, GRANT_PER_REP, LEVELS, MIN_REP_FOR_STATIONS, OVERCROWD_LIMIT, ZONES, ZONE_TYPES, costMult, fareShare } from './config';
 import { Input } from './input';
 import { Music, type MusicStyle } from './music';
 import { landAt, WORLD_H, WORLD_W } from './nyc';
@@ -266,7 +266,7 @@ function infoHtml(): string {
       <p class="muted">${line.stations.length} fermate · ${tunnels} gallerie · ${aboard} passeggeri a bordo</p>
       <div class="row"><span class="grow">🚆 Treni: <b>${trains.length}</b> <span class="muted">(${game.levelInfo.trainCapacity} posti)</span></span>
         <button class="btn small" data-action="train-remove" data-id="${line.id}">−</button>
-        <button class="btn small" data-action="train-add" data-id="${line.id}">+ ${fmtMoney(COST.train)}</button></div>
+        <button class="btn small" data-action="train-add" data-id="${line.id}">+ ${fmtMoney(game.trainCost)}</button></div>
       <h4>Fermate</h4>
       ${line.stations.map((id) => {
         const st = game.net.stationById.get(id)!;
@@ -299,7 +299,7 @@ function helpHtml(): string {
     <p>2. Tu costruisci le <b>linee</b>: trascina da una stazione all'altra, passando sopra più stazioni le colleghi in fila. I soldi non bastano per tutte: scegli bene.</p>
     <p>3. I passeggeri (pallini colorati) vanno verso il tipo di zona del loro colore. Ogni viaggio completato è un incasso.</p>
     <p>4. Le zone servite bene crescono. Più abitanti servi, più sali di livello e sblocchi linee e treni più capienti.</p>
-    <p>5. <b>Attenzione:</b> le stazioni scollegate accumulano malcontento, quelle sovraffollate rischiano la crisi, e il sindaco fa richieste a tempo. La sua fiducia (🏛️) decide il contributo giornaliero del Comune (${fmtMoney(GRANT_PER_REP)} per punto).</p>
+    <p>5. <b>Attenzione:</b> le stazioni scollegate accumulano malcontento, quelle sovraffollate rischiano la crisi, e il sindaco fa richieste a tempo. La sua fiducia (🏛️) decide quanto incassi dai biglietti, quanto costa costruire, il contributo del Comune e se apre nuove stazioni.</p>
     <p class="muted">Attraversare fiumi e baie richiede una galleria (${fmtMoney(COST.tunnel)}). Trascina per spostare la mappa, pizzica o usa la rotella per lo zoom.</p>
     <h4>Zone</h4>
     <div class="legend">${ZONE_TYPES.map((t) => `<div><span class="dot" style="background:${ZONES[t].color}"></span> ${ZONES[t].icon} ${ZONES[t].label}</div>`).join('')}</div>
@@ -307,6 +307,17 @@ function helpHtml(): string {
     <p>Incassi ${fmtMoney(st.incomeToday)} · Spese ${fmtMoney(st.expensesToday)}<br>
     Passeggeri trasportati: <b>${st.delivered.toLocaleString('it-IT')}</b> · persi: ${st.lost}<br>
     Abitanti serviti: <b>${game.servedPopulation().toLocaleString('it-IT')}</b></p>`;
+}
+
+function trustHtml(): string {
+  const r = game.state.reputation;
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  return `<h4>Fiducia del sindaco: ${Math.round(r)}/100</h4>
+    <div class="row"><span class="grow">🎟️ Quota dei biglietti che tieni</span><b>${pct(fareShare(r))}</b></div>
+    <div class="row"><span class="grow">🏗️ Costi di costruzione</span><b>${pct(costMult(r))}</b></div>
+    <div class="row"><span class="grow">💵 Contributo giornaliero</span><b>${fmtMoney(r * GRANT_PER_REP)}</b></div>
+    <div class="row"><span class="grow">🚇 Nuove stazioni ogni mattina</span><b>${r >= MIN_REP_FOR_STATIONS ? 'sì' : `no (serve ${MIN_REP_FOR_STATIONS})`}</b></div>
+    <p class="muted">La fiducia sale ogni giorno se colleghi più della metà delle stazioni e i passeggeri sono soddisfatti, e con le richieste completate. Scende con proteste, crisi e richieste scadute.</p>`;
 }
 
 function linesHtml(): string {
@@ -332,7 +343,7 @@ function goalsHtml(): string {
     ${next ? `<p class="muted">Prossimo: ${next.unlock}</p>` : '<p class="muted">Livello massimo del prototipo raggiunto!</p>'}
     <h4>Richieste del sindaco</h4>
     ${s.requests.length ? s.requests.map((r) => `<div class="row"><span>🏛️</span><span class="grow">${r.title}<br><small class="muted">⏱ ${hoursLeft(r.deadline)} · ${r.kind === 'deliver' ? `${r.progress}/${r.target} · ` : ''}+${fmtMoney(r.reward)}</small></span></div>`).join('') : '<p class="muted">Nessuna richiesta al momento.</p>'}
-    <p class="muted">Fiducia del sindaco: <b>${Math.round(s.reputation)}</b>/100 → contributo di ${fmtMoney(s.reputation * GRANT_PER_REP)} al giorno.</p>
+    ${trustHtml()}
     <h4>Obiettivi</h4>
     ${GOALS.map((g) => {
       const done = s.goalsDone.includes(g.id);

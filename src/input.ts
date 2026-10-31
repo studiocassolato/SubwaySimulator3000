@@ -188,8 +188,7 @@ export class Input {
     if (m.insertIdx !== undefined) {
       if (!pv.chain.length || !pv.insertBetween) return this.onQuote('Trascina su una stazione per aggiungerla alla linea');
       const [a, b] = pv.insertBetween;
-      const q = this.game.net.trackCost([a, pv.chain[0], b]).cost - this.game.net.trackCost([a, b]).cost;
-      return this.onQuote(`Deviazione: $${Math.max(0, q)}`);
+      return this.onQuote(`Deviazione: $${this.game.detourCost(a, pv.chain[0], b)}`);
     }
     if (pv.anchor !== undefined) {
       if (!pv.chain.length) return this.onQuote('Trascina verso una stazione per prolungare');
