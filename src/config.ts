@@ -29,12 +29,12 @@ export const COST = {
   trackPerUnit: 0.8,
   tunnel: 900,
   train: 700,
-  trainUpkeepPerDay: 60,
+  trainUpkeepPerDay: 120,
   stationUpkeepPerDay: 10,
 };
 
-export const FARE_BASE = 4;
-export const FARE_PER_HOP = 1.5;
+export const FARE_BASE = 3;
+export const FARE_PER_HOP = 1;
 
 export const STATION_RADIUS = 180; // bacino di utenza
 export const TRAIN_SPEED = 70; // unità per minuto di gioco
@@ -107,3 +107,24 @@ export const DISCONTENT_MINUTES = { easy: 1440 * 4, normal: 1440 * 2.5 };
 /** contributo comunale giornaliero per punto di reputazione */
 export const GRANT_PER_REP = 30;
 export const INITIAL_STATIONS = 12;
+
+/** Quota del biglietto che resta all'azienda: il resto va al Comune, di più se il sindaco non si fida. */
+export const fareShare = (rep: number) => 0.55 + (0.45 * rep) / 100;
+/** Moltiplicatore dei costi di costruzione (permessi e burocrazia): 1,5 a fiducia 0, 0,75 a fiducia 100. */
+export const costMult = (rep: number) => (rep < 50 ? 1.5 - rep / 100 : 1.25 - rep / 200);
+/** Sotto questa fiducia il sindaco non apre nuove stazioni. */
+export const MIN_REP_FOR_STATIONS = 30;
+
+/** multa del Comune per ogni crisi da sovraffollamento, moltiplicata per il livello */
+export const CRISIS_FINE = 600;
+
+/** Sotto questa fiducia il contributo diventa una compensazione che paghi tu al Comune. */
+export const COMPENSATION_BELOW = 25;
+export const COMPENSATION_PER_POINT = 60;
+/** Sotto questa fiducia il sindaco si prende la linea peggiore. */
+export const SEIZE_BELOW = 10;
+/** Da questa fiducia in su puoi riscattare una linea presa dal Comune. */
+export const BUYBACK_FROM = 20;
+/** Donazione volontaria al Comune: prezzo base per livello e fiducia guadagnata. */
+export const DONATION_BASE = 1200;
+export const DONATION_REP = 4;

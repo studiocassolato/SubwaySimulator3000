@@ -1,6 +1,8 @@
 import './style.css';
 import { Camera } from './camera';
-import { COST, GRANT_PER_REP, LEVELS, OVERCROWD_LIMIT, ZONES, ZONE_TYPES } from './config';
+import {
+  BUYBACK_FROM, COMPENSATION_BELOW, COMPENSATION_PER_POINT, COST, DONATION_REP, GRANT_PER_REP, LEVELS, MIN_REP_FOR_STATIONS, SEIZE_BELOW, OVERCROWD_LIMIT, ZONES, ZONE_TYPES, costMult, fareShare,
+} from './config';
 import { Input } from './input';
 import { Music, type MusicStyle } from './music';
 import { landAt, WORLD_H, WORLD_W } from './nyc';
@@ -114,12 +116,24 @@ function updateTopbar() {
   $('#btn-music').classList.toggle('off', !music.playing);
 }
 
+// su telefono la velocità è uno "speed dial": si vede solo quella attiva, un tocco apre le altre
+const isPhone = () => window.matchMedia('(max-width: 760px)').matches;
+const speedBox = $('#speed');
 document.querySelectorAll<HTMLButtonElement>('.speed button').forEach((b) =>
-  b.addEventListener('click', () => {
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isPhone() && !speedBox.classList.contains('open')) {
+      speedBox.classList.add('open');
+      return;
+    }
+    speedBox.classList.remove('open');
     game.speed = Number(b.dataset.speed);
     updateTopbar();
   }),
 );
+document.addEventListener('pointerdown', (e) => {
+  if (!speedBox.contains(e.target as Node)) speedBox.classList.remove('open');
+});
 $('#btn-music').addEventListener('click', () => {
   music.toggle();
   savePrefs();
@@ -191,18 +205,36 @@ input.onQuote = (text) => {
 input.onSelect = (s: Selection) => {
   if (s) {
     tab = 'info';
-    setSheet(true);
+    // su telefono il pannello resta chiuso: il pallino sul bottone ℹ️ segnala che c'è qualcosa da vedere
+    if (!isPhone()) setSheet(true);
   }
+  $('#btn-info').classList.toggle('dot', !!s && panel.classList.contains('collapsed'));
   renderPanel(true);
 };
 game.onChange = () => renderPanel();
+// avviso bloccante: il gioco si ferma finché non si preme OK, poi riparte a velocità 1
+game.onAlert = (title, html) => {
+  game.speed = 0;
+  $('#alert-title').textContent = title;
+  $('#alert-body').innerHTML = html;
+  const dlg = $<HTMLDialogElement>('#alert');
+  if (!dlg.open) dlg.showModal();
+  updateTopbar();
+};
+$('#alert-ok').addEventListener('click', () => $<HTMLDialogElement>('#alert').close());
+$<HTMLDialogElement>('#alert').addEventListener('close', () => {
+  game.speed = 1;
+  updateTopbar();
+});
 
 // ---------- pannello laterale / foglio dal basso ----------
 const panel = $('#panel');
 function setSheet(open: boolean) {
   panel.classList.toggle('collapsed', !open);
   document.body.classList.toggle('sheet-closed', !open);
+  if (open) $('#btn-info').classList.remove('dot');
 }
+$('#btn-info').addEventListener('click', () => setSheet(panel.classList.contains('collapsed')));
 $('#sheet-handle').addEventListener('click', () => setSheet(panel.classList.contains('collapsed')));
 if (window.matchMedia('(max-width: 760px)').matches) setSheet(false);
 
@@ -261,12 +293,21 @@ function infoHtml(): string {
     const trains = s.trains.filter((t) => t.lineId === line.id);
     const aboard = trains.reduce((a, t) => a + t.passengers.length, 0);
     const tunnels = game.net.geom.get(line.id)?.tunnels.length ?? 0;
+    if (line.seized) {
+      const canBuy = s.reputation >= BUYBACK_FROM;
+      return `
+      <h3>🏛️ ${line.name}</h3>
+      <div class="hint"><b>In gestione al Comune.</b> I treni girano ma non portano i tuoi passeggeri, e non puoi collegarti alle sue stazioni.</div>
+      <p>${line.stations.map((id) => game.net.stationById.get(id)!.name).join(' · ')}</p>
+      <div class="btns"><button class="btn primary" data-action="buyback" data-id="${line.id}" ${canBuy ? '' : 'disabled'}>🔑 Riscatta per ${fmtMoney(game.buybackCost(line))}</button></div>
+      ${canBuy ? '' : `<p class="muted">Il sindaco tratta solo con fiducia almeno ${BUYBACK_FROM} (ora ${Math.round(s.reputation)}).</p>`}`;
+    }
     return `
       <h3><span class="swatch" style="display:inline-block;background:${line.color}"></span> ${line.name}</h3>
       <p class="muted">${line.stations.length} fermate · ${tunnels} gallerie · ${aboard} passeggeri a bordo</p>
       <div class="row"><span class="grow">🚆 Treni: <b>${trains.length}</b> <span class="muted">(${game.levelInfo.trainCapacity} posti)</span></span>
         <button class="btn small" data-action="train-remove" data-id="${line.id}">−</button>
-        <button class="btn small" data-action="train-add" data-id="${line.id}">+ ${fmtMoney(COST.train)}</button></div>
+        <button class="btn small" data-action="train-add" data-id="${line.id}">+ ${fmtMoney(game.trainCost)}</button></div>
       <h4>Fermate</h4>
       ${line.stations.map((id) => {
         const st = game.net.stationById.get(id)!;
@@ -299,7 +340,7 @@ function helpHtml(): string {
     <p>2. Tu costruisci le <b>linee</b>: trascina da una stazione all'altra, passando sopra più stazioni le colleghi in fila. I soldi non bastano per tutte: scegli bene.</p>
     <p>3. I passeggeri (pallini colorati) vanno verso il tipo di zona del loro colore. Ogni viaggio completato è un incasso.</p>
     <p>4. Le zone servite bene crescono. Più abitanti servi, più sali di livello e sblocchi linee e treni più capienti.</p>
-    <p>5. <b>Attenzione:</b> le stazioni scollegate accumulano malcontento, quelle sovraffollate rischiano la crisi, e il sindaco fa richieste a tempo. La sua fiducia (🏛️) decide il contributo giornaliero del Comune (${fmtMoney(GRANT_PER_REP)} per punto).</p>
+    <p>5. <b>Attenzione:</b> le stazioni scollegate accumulano malcontento, quelle sovraffollate rischiano la crisi, e il sindaco fa richieste a tempo. La sua fiducia (🏛️) decide quanto incassi dai biglietti, quanto costa costruire, il contributo del Comune e se apre nuove stazioni.</p>
     <p class="muted">Attraversare fiumi e baie richiede una galleria (${fmtMoney(COST.tunnel)}). Trascina per spostare la mappa, pizzica o usa la rotella per lo zoom.</p>
     <h4>Zone</h4>
     <div class="legend">${ZONE_TYPES.map((t) => `<div><span class="dot" style="background:${ZONES[t].color}"></span> ${ZONES[t].icon} ${ZONES[t].label}</div>`).join('')}</div>
@@ -309,11 +350,24 @@ function helpHtml(): string {
     Abitanti serviti: <b>${game.servedPopulation().toLocaleString('it-IT')}</b></p>`;
 }
 
+function trustHtml(): string {
+  const r = game.state.reputation;
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  return `<h4>Fiducia del sindaco: ${Math.round(r)}/100</h4>
+    <div class="row"><span class="grow">🎟️ Quota dei biglietti che tieni</span><b>${pct(fareShare(r))}</b></div>
+    <div class="row"><span class="grow">🏗️ Costi di costruzione</span><b>${pct(costMult(r))}</b></div>
+    <div class="row"><span class="grow">💵 ${r >= COMPENSATION_BELOW ? 'Contributo giornaliero' : 'Compensazione che paghi ogni giorno'}</span><b>${fmtMoney(r >= COMPENSATION_BELOW ? r * GRANT_PER_REP : (COMPENSATION_BELOW - r) * COMPENSATION_PER_POINT * game.state.level)}</b></div>
+    <div class="row"><span class="grow">🚇 Nuove stazioni ogni mattina</span><b>${r >= MIN_REP_FOR_STATIONS ? 'sì' : `no (serve ${MIN_REP_FOR_STATIONS})`}</b></div>
+    <div class="row"><span class="grow">🏛️ Linee a rischio</span><b>${r < SEIZE_BELOW ? 'il sindaco ne prende una stanotte' : `sotto ${SEIZE_BELOW}`}</b></div>
+    <div class="btns"><button class="btn" data-action="donate" ${r >= 100 ? 'disabled' : ''}>🤝 Dona ${fmtMoney(game.donationCost())} al Comune (+${DONATION_REP} fiducia)</button></div>
+    <p class="muted">La fiducia sale ogni giorno se colleghi più della metà delle stazioni e i passeggeri sono soddisfatti, con le richieste completate e con le donazioni (sempre più care nello stesso giorno). Scende con proteste, crisi e richieste scadute. Sotto ${COMPENSATION_BELOW} paghi tu una compensazione al Comune, sotto ${SEIZE_BELOW} il sindaco si prende la linea peggiore: la riscatti da ${BUYBACK_FROM} in su.</p>`;
+}
+
 function linesHtml(): string {
   const s = game.state;
   const rows = s.lines.map((l) => {
     const trains = s.trains.filter((t) => t.lineId === l.id).length;
-    return `<div class="row"><span class="swatch" style="background:${l.color}"></span><span class="grow">${l.name}<br><small class="muted">${l.stations.length} fermate · ${trains} treni</small></span>
+    return `<div class="row"><span class="swatch" style="background:${l.color}"></span><span class="grow">${l.seized ? '🏛️ ' : ''}${l.name}<br><small class="muted">${l.seized ? 'gestita dal Comune · ' : ''}${l.stations.length} fermate · ${trains} treni</small></span>
       <button class="btn small" data-action="train-remove" data-id="${l.id}">−</button>
       <button class="btn small" data-action="train-add" data-id="${l.id}">+🚆</button>
       <button class="btn small" data-action="select-line" data-id="${l.id}">Apri</button></div>`;
@@ -332,7 +386,7 @@ function goalsHtml(): string {
     ${next ? `<p class="muted">Prossimo: ${next.unlock}</p>` : '<p class="muted">Livello massimo del prototipo raggiunto!</p>'}
     <h4>Richieste del sindaco</h4>
     ${s.requests.length ? s.requests.map((r) => `<div class="row"><span>🏛️</span><span class="grow">${r.title}<br><small class="muted">⏱ ${hoursLeft(r.deadline)} · ${r.kind === 'deliver' ? `${r.progress}/${r.target} · ` : ''}+${fmtMoney(r.reward)}</small></span></div>`).join('') : '<p class="muted">Nessuna richiesta al momento.</p>'}
-    <p class="muted">Fiducia del sindaco: <b>${Math.round(s.reputation)}</b>/100 → contributo di ${fmtMoney(s.reputation * GRANT_PER_REP)} al giorno.</p>
+    ${trustHtml()}
     <h4>Obiettivi</h4>
     ${GOALS.map((g) => {
       const done = s.goalsDone.includes(g.id);
@@ -356,6 +410,8 @@ $('#panel-body').addEventListener('click', (e) => {
     case 'train-remove': game.removeTrain(id); break;
     case 'unlink': game.removeStationFromLine(Number(b.dataset.line), id); break;
     case 'delete-line': game.deleteLine(id); input.select(null); break;
+    case 'buyback': game.buyback(id); break;
+    case 'donate': game.donate(); break;
   }
   renderPanel(true);
 });

@@ -111,7 +111,7 @@ export class Input {
       return;
     }
     const st = this.stationAt(p);
-    if (st !== null) {
+    if (st !== null && !this.game.stationLocked(st)) {
       const used = new Set(this.game.state.lines.map((l) => l.color));
       const color = LINE_COLORS.find((c) => !used.has(c)) ?? '#888';
       this.mode = { kind: 'draw', preview: { chain: [st], pointer: w, color } };
@@ -164,7 +164,9 @@ export class Input {
     const pv = m.preview;
     pv.pointer = this.cam.toWorld(p);
     this.drag = pv;
-    const st = this.stationAt(p);
+    const found = this.stationAt(p);
+    // le stazioni delle linee gestite dal Comune non si agganciano
+    const st = found !== null && this.game.stationLocked(found) ? null : found;
     this.hoverStation = st;
     const line = m.lineId !== undefined ? this.game.state.lines.find((l) => l.id === m.lineId) : undefined;
     if (st !== null) {
@@ -188,8 +190,7 @@ export class Input {
     if (m.insertIdx !== undefined) {
       if (!pv.chain.length || !pv.insertBetween) return this.onQuote('Trascina su una stazione per aggiungerla alla linea');
       const [a, b] = pv.insertBetween;
-      const q = this.game.net.trackCost([a, pv.chain[0], b]).cost - this.game.net.trackCost([a, b]).cost;
-      return this.onQuote(`Deviazione: $${Math.max(0, q)}`);
+      return this.onQuote(`Deviazione: $${this.game.detourCost(a, pv.chain[0], b)}`);
     }
     if (pv.anchor !== undefined) {
       if (!pv.chain.length) return this.onQuote('Trascina verso una stazione per prolungare');

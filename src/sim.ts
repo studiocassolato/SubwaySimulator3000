@@ -1,6 +1,7 @@
 import {
-  COST, DISCONTENT_MINUTES, DWELL, FARE_BASE, FARE_PER_HOP, GRANT_PER_REP, LEVELS, LINE_COLORS, MAX_WAIT,
-  OVERCROWD_AT, OVERCROWD_LIMIT, POP_PER_DENSITY, RAMP_DAYS, STATION_CAPACITY, TRAIN_SPEED, ZONES, ZONE_TYPES,
+  BUYBACK_FROM, COMPENSATION_BELOW, COMPENSATION_PER_POINT, COST, CRISIS_FINE, DISCONTENT_MINUTES, DONATION_BASE,
+  DONATION_REP, SEIZE_BELOW, DWELL, FARE_BASE, FARE_PER_HOP, GRANT_PER_REP, LEVELS, LINE_COLORS, MAX_WAIT,
+  MIN_REP_FOR_STATIONS, OVERCROWD_AT, OVERCROWD_LIMIT, costMult, fareShare, POP_PER_DENSITY, RAMP_DAYS, STATION_CAPACITY, TRAIN_SPEED, ZONES, ZONE_TYPES,
   demandProfile,
 } from './config';
 import { Network } from './network';
@@ -51,6 +52,8 @@ export class Game {
   paused = false;
   onNotify: Notify = () => {};
   onChange: () => void = () => {};
+  /** avvisi importanti che mettono in pausa il gioco */
+  onAlert: (title: string, html: string) => void = () => {};
 
   constructor(public state: GameState) {
     this.net = new Network(state);
@@ -123,6 +126,89 @@ export class Game {
     return (this.net.linesAt.get(id)?.length ?? 0) > 0;
   }
 
+  /** Effetto della fiducia del sindaco sui costi di costruzione. */
+  get costMult() {
+    return costMult(this.state.reputation);
+  }
+
+  get trainCost() {
+    return Math.round(COST.train * this.costMult);
+  }
+
+  detourCost(a: number, via: number, b: number) {
+    const extra = this.net.trackCost([a, via, b]).cost - this.net.trackCost([a, b]).cost;
+    return Math.round(Math.max(0, extra) * this.costMult);
+  }
+
+  /** Le stazioni di una linea presa dal Comune non si possono collegare. */
+  stationLocked(id: number) {
+    return this.state.lines.some((l) => l.seized && l.stations.includes(id));
+  }
+
+  donationCost() {
+    return Math.round(DONATION_BASE * this.state.level * Math.pow(1.5, this.state.donationsToday ?? 0));
+  }
+
+  /** Donazione volontaria al Comune per recuperare fiducia. */
+  donate() {
+    const s = this.state;
+    if (s.reputation >= 100) return;
+    const cost = this.donationCost();
+    if (!this.spend(cost, 'la donazione')) return;
+    s.donationsToday = (s.donationsToday ?? 0) + 1;
+    this.changeRep(DONATION_REP);
+    this.log(`🤝 Donazione al Comune di $${cost}: fiducia del sindaco +${DONATION_REP}`, 'good');
+    this.onChange();
+  }
+
+  /** Il Comune prende in gestione la linea con il servizio peggiore (mai l'ultima che hai). */
+  private seizeWorstLine() {
+    const s = this.state;
+    const mine = s.lines.filter((l) => !l.seized);
+    if (mine.length < 2) return;
+    const score = (l: Line) => {
+      const sts = l.stations.map((id) => this.net.stationById.get(id)!);
+      return sts.reduce((a, st) => a + st.waiting.length + st.crowd / 10, 0) / sts.length;
+    };
+    const worst = mine.sort((a, b) => score(b) - score(a))[0];
+    for (const t of s.trains.filter((t) => t.lineId === worst.id)) this.dropPassengers(t);
+    worst.seized = true;
+    this.net.rebuild();
+    this.log(`🏛️ Il sindaco ha preso in gestione la ${worst.name}: non puoi usarla né collegarti finché non la riscatti (fiducia ${BUYBACK_FROM}+)`, 'bad');
+    const names = worst.stations.map((id) => this.net.stationById.get(id)!.name).join(', ');
+    this.onAlert(
+      `🏛️ Il sindaco si è preso la ${worst.name}`,
+      `<p>La fiducia del sindaco è scesa sotto ${SEIZE_BELOW}: il Comune ha preso in gestione la tua linea con il servizio peggiore (${names}).</p>
+      <ul>
+        <li>La linea resta sulla mappa, grigia e tratteggiata: i treni girano ma <b>non portano i tuoi passeggeri</b>.</li>
+        <li>Non puoi modificarla, aggiungere treni né <b>collegarti alle sue stazioni</b> con altre linee.</li>
+        <li>Quando la fiducia torna almeno a <b>${BUYBACK_FROM}</b> puoi riscattarla a pagamento dal pannello della linea.</li>
+      </ul>
+      <p>Per recuperare fiducia: collega più stazioni, evita il sovraffollamento, completa le richieste del sindaco o fai una donazione al Comune (pannello Obiettivi).</p>`,
+    );
+    this.onChange();
+  }
+
+  buybackCost(line: Line) {
+    const trains = this.state.trains.filter((t) => t.lineId === line.id).length;
+    return Math.round((this.net.trackCost(line.stations).cost + trains * COST.train * 0.8) * this.costMult);
+  }
+
+  buyback(lineId: number) {
+    const line = this.state.lines.find((l) => l.id === lineId);
+    if (!line?.seized) return;
+    if (this.state.reputation < BUYBACK_FROM) {
+      this.onNotify(`Il sindaco accetta di trattare solo con fiducia almeno ${BUYBACK_FROM}`, 'bad');
+      return;
+    }
+    if (!this.spend(this.buybackCost(line), 'il riscatto')) return;
+    line.seized = false;
+    this.net.rebuild();
+    this.markOpened();
+    this.log(`🔑 Hai riscattato la ${line.name}: torna nella tua rete`, 'good');
+    this.onChange();
+  }
+
   canAddLine(): boolean {
     return this.state.lines.length < this.levelInfo.maxLines;
   }
@@ -130,11 +216,15 @@ export class Game {
   /** Costo per creare/estendere una linea con le stazioni date (in ordine). */
   quote(stations: number[], isNew: boolean): { cost: number; tunnels: number } {
     const t = this.net.trackCost(stations);
-    return { cost: t.cost + (isNew ? COST.train : 0), tunnels: t.tunnels };
+    return { cost: Math.round((t.cost + (isNew ? COST.train : 0)) * this.costMult), tunnels: t.tunnels };
   }
 
   createLine(stations: number[]): Line | null {
     if (stations.length < 2) return null;
+    if (stations.some((id) => this.stationLocked(id))) {
+      this.onNotify('Non puoi collegarti alle stazioni di una linea gestita dal Comune', 'bad');
+      return null;
+    }
     if (!this.canAddLine()) {
       this.onNotify(`Hai già ${this.levelInfo.maxLines} linee: sali di livello per averne altre`, 'bad');
       return null;
@@ -157,8 +247,16 @@ export class Game {
   /** Aggiunge stazioni a un capolinea (atEnd=false: all'inizio). */
   extendLine(lineId: number, added: number[], atEnd: boolean): boolean {
     const line = this.state.lines.find((l) => l.id === lineId);
+    if (line?.seized) {
+      this.onNotify(`${line.name} è in gestione al Comune: riscattala per modificarla`, 'bad');
+      return false;
+    }
     if (!line || !added.length) return false;
     const anchor = atEnd ? line.stations[line.stations.length - 1] : line.stations[0];
+    if (added.some((id) => this.stationLocked(id))) {
+      this.onNotify('Non puoi collegarti alle stazioni di una linea gestita dal Comune', 'bad');
+      return false;
+    }
     const q = this.quote([anchor, ...added], false);
     if (!this.spend(q.cost, 'il prolungamento')) return false;
     const before = this.snapshotTrains(line);
@@ -171,12 +269,14 @@ export class Game {
   /** Inserisce una stazione tra le fermate idx e idx+1. */
   insertStation(lineId: number, idx: number, stationId: number): boolean {
     const line = this.state.lines.find((l) => l.id === lineId);
-    if (!line || line.stations.includes(stationId)) return false;
+    if (line?.seized) {
+      this.onNotify(`${line.name} è in gestione al Comune: riscattala per modificarla`, 'bad');
+      return false;
+    }
+    if (!line || line.stations.includes(stationId) || this.stationLocked(stationId)) return false;
     const a = line.stations[idx];
     const b = line.stations[idx + 1];
-    const oldCost = this.net.trackCost([a, b]).cost;
-    const newCost = this.net.trackCost([a, stationId, b]).cost;
-    if (!this.spend(Math.max(0, newCost - oldCost), 'la deviazione')) return false;
+    if (!this.spend(this.detourCost(a, stationId, b), 'la deviazione')) return false;
     const before = this.snapshotTrains(line);
     line.stations.splice(idx + 1, 0, stationId);
     this.afterLineChange(line, before);
@@ -185,6 +285,10 @@ export class Game {
 
   removeStationFromLine(lineId: number, stationId: number, silent = false) {
     const line = this.state.lines.find((l) => l.id === lineId);
+    if (line?.seized) {
+      this.onNotify(`${line.name} è in gestione al Comune: riscattala per modificarla`, 'bad');
+      return ;
+    }
     if (!line) return;
     const before = this.snapshotTrains(line);
     line.stations = line.stations.filter((s) => s !== stationId);
@@ -197,6 +301,10 @@ export class Game {
 
   deleteLine(lineId: number, silent = false) {
     const line = this.state.lines.find((l) => l.id === lineId);
+    if (line?.seized) {
+      this.onNotify(`${line.name} è in gestione al Comune: riscattala per modificarla`, 'bad');
+      return ;
+    }
     if (!line) return;
     const trains = this.state.trains.filter((t) => t.lineId === lineId);
     for (const t of trains) this.dropPassengers(t);
@@ -210,7 +318,11 @@ export class Game {
 
   addTrain(lineId: number) {
     const line = this.state.lines.find((l) => l.id === lineId);
-    if (!line || !this.spend(COST.train, 'un nuovo treno')) return;
+    if (line?.seized) {
+      this.onNotify(`${line.name} è in gestione al Comune: riscattala per modificarla`, 'bad');
+      return ;
+    }
+    if (!line || !this.spend(this.trainCost, 'un nuovo treno')) return;
     const others = this.state.trains.filter((t) => t.lineId === line.id);
     const t = this.makeTrain(line);
     if (others.length) {
@@ -233,6 +345,11 @@ export class Game {
   }
 
   removeTrain(lineId: number) {
+    const line = this.state.lines.find((l) => l.id === lineId);
+    if (line?.seized) {
+      this.onNotify(`${line.name} è in gestione al Comune: riscattala per modificarla`, 'bad');
+      return ;
+    }
     const trains = this.state.trains.filter((t) => t.lineId === lineId);
     if (trains.length <= 1) {
       this.onNotify('Ogni linea ha bisogno di almeno un treno', 'bad');
@@ -456,6 +573,7 @@ export class Game {
     const next = line.stations[t.target];
     if (!st || next === undefined) return;
     t.held = 0;
+    if (line.seized) return; // gestita dal Comune: i treni girano ma non servono la tua rete
     if (this.activeEvents('works').some((e) => e.stationId === st.id)) return; // fermata chiusa: transita
 
     let moved = 0;
@@ -463,7 +581,7 @@ export class Game {
     for (const p of t.passengers) {
       const here = this.net.hopsTo(p.dest, st.id);
       if (here === 0) {
-        const fare = Math.round(FARE_BASE + FARE_PER_HOP * p.hops);
+        const fare = Math.round((FARE_BASE + FARE_PER_HOP * p.hops) * fareShare(s.reputation));
         s.money += fare;
         s.stats.incomeToday += fare;
         s.stats.delivered++;
@@ -525,7 +643,10 @@ export class Game {
     this.checkRequests();
     this.maybeRequest();
     // ogni mattina il sindaco approva una nuova stazione
-    if (Math.floor(s.time / 60) % 24 === 6 && s.time > 1440) this.approveStation();
+    if (Math.floor(s.time / 60) % 24 === 6 && s.time > 1440) {
+      if (s.reputation >= MIN_REP_FOR_STATIONS) this.approveStation();
+      else this.log(`🏛️ Il sindaco blocca i nuovi cantieri: la sua fiducia è sotto ${MIN_REP_FOR_STATIONS}`, 'bad');
+    }
     // di notte, con poca gente in giro, le linee ripartono con i treni equidistanziati
     if (Math.floor(s.time / 60) % 24 === 3) for (const line of s.lines) this.respace(line);
     this.onChange();
@@ -625,7 +746,7 @@ export class Game {
         const pop = (this.net.catchment.get(st.id) ?? []).reduce((a, id) => a + (byId.get(id)?.density ?? 0), 0);
         st.discontent += (dt / fill) * 100 * Math.min(1.6, Math.max(0.4, pop / 40));
         if (st.discontent >= 100) {
-          st.discontent = 40;
+          st.discontent = 0;
           this.changeRep(this.hard ? -5 : -3);
           this.log(`📣 Gli abitanti di ${st.name} protestano: vogliono la metro! Fiducia del sindaco in calo`, 'bad');
         }
@@ -640,12 +761,15 @@ export class Game {
     st.waiting = [];
     st.frozenUntil = s.time + 1440;
     s.satisfaction *= 0.85;
-    this.changeRep(this.hard ? -8 : -5);
+    this.changeRep(this.hard ? -6 : -3);
+    const fine = CRISIS_FINE * s.level;
+    s.money -= fine;
+    s.stats.expensesToday += fine;
     // il quartiere perde un po' di attrattiva
     const cells = (this.net.catchment.get(st.id) ?? []).map((id) => byId.get(id)!).filter((c) => c.density > 1);
     for (let i = 0; i < 2 && cells.length; i++) cells.splice(Math.floor(Math.random() * cells.length), 1)[0].density--;
     this.net.rebuild();
-    this.log(`🚨 Crisi a ${st.name}: stazione sovraffollata troppo a lungo. Il quartiere smette di crescere per un giorno`, 'bad');
+    this.log(`🚨 Crisi a ${st.name}: stazione sovraffollata troppo a lungo. Multa del Comune $${fine}, il quartiere smette di crescere per un giorno`, 'bad');
   }
 
   private maybeRequest() {
@@ -723,19 +847,34 @@ export class Game {
 
   private daily() {
     const s = this.state;
-    const upkeep = s.trains.length * COST.trainUpkeepPerDay + s.stations.length * COST.stationUpkeepPerDay;
+    const myTrains = s.trains.filter((t) => !s.lines.find((l) => l.id === t.lineId)?.seized).length;
+    const upkeep = myTrains * COST.trainUpkeepPerDay + s.stations.length * COST.stationUpkeepPerDay;
     s.money -= upkeep;
     s.stats.expensesToday += upkeep;
-    const grant = Math.round(s.reputation * GRANT_PER_REP);
+    // il sindaco giudica il servizio della giornata: copertura delle stazioni e soddisfazione
+    const linked = s.stations.filter((st) => this.stationLinked(st.id)).length;
+    const coverage = s.stations.length ? linked / s.stations.length : 0;
+    const drift = Math.round(Math.max(-4, Math.min(6, (coverage - 0.5) * 10 + (s.satisfaction - 60) / 8)));
+    this.changeRep(drift);
+    // sopra soglia il Comune ti dà un contributo, sotto soglia sei tu a pagare una compensazione
+    const grant = s.reputation >= COMPENSATION_BELOW
+      ? Math.round(s.reputation * GRANT_PER_REP)
+      : -Math.round((COMPENSATION_BELOW - s.reputation) * COMPENSATION_PER_POINT * s.level);
     s.money += grant;
-    s.stats.incomeToday += grant;
+    if (grant >= 0) s.stats.incomeToday += grant;
+    else {
+      s.stats.expensesToday -= grant;
+      this.changeRep(2); // la compensazione ammorbidisce un po' il sindaco
+    }
+    s.donationsToday = 0;
+    if (s.reputation < SEIZE_BELOW) this.seizeWorstLine();
     s.stats.lastDayIncome = s.stats.incomeToday;
     s.stats.lastDayExpenses = s.stats.expensesToday;
     s.stats.incomeToday = 0;
     s.stats.expensesToday = 0;
     this.unmet.clear();
     const day = Math.floor(s.time / 1440) + 1;
-    this.log(`Inizia il giorno ${day}. Contributo del Comune: $${grant}. Ieri: incassi $${s.stats.lastDayIncome}, spese $${s.stats.lastDayExpenses}`);
+    this.log(`Inizia il giorno ${day}. Giudizio del sindaco: ${drift >= 0 ? '+' : ''}${drift} fiducia (${Math.round(coverage * 100)}% stazioni collegate). ${grant >= 0 ? `Contributo del Comune: $${grant}` : `Compensazione pagata al Comune: $${-grant}`}. Ieri: incassi $${s.stats.lastDayIncome}, spese $${s.stats.lastDayExpenses}`);
   }
 }
 
