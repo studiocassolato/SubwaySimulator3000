@@ -805,7 +805,7 @@ export class Game {
     st.frozenUntil = s.time + 1440;
     s.satisfaction *= 0.85;
     this.changeRep(this.hard ? -6 : -3);
-    const fine = CRISIS_FINE;
+    const fine = CRISIS_FINE + 200 * (s.level - 1);
     s.money -= fine;
     s.stats.expensesToday += fine;
     // il quartiere perde un po' di attrattiva
