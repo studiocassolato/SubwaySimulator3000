@@ -359,7 +359,7 @@ function trustHtml(): string {
   return `<h4>Fiducia del sindaco: ${Math.round(r)}/100</h4>
     <div class="row"><span class="grow">🎟️ Quota dei biglietti che tieni</span><b>${pct(fareShare(r))}</b></div>
     <div class="row"><span class="grow">🏗️ Costi di costruzione</span><b>${pct(costMult(r))}</b></div>
-    <div class="row"><span class="grow">💵 ${r >= COMPENSATION_BELOW ? 'Contributo giornaliero' : 'Compensazione che paghi ogni giorno'}</span><b>${fmtMoney(r >= COMPENSATION_BELOW ? r * GRANT_PER_REP : (COMPENSATION_BELOW - r) * COMPENSATION_PER_POINT * game.state.level)}</b></div>
+    <div class="row"><span class="grow">💵 ${r >= COMPENSATION_BELOW ? 'Contributo giornaliero' : 'Compensazione che paghi ogni giorno'}</span><b>${fmtMoney(r >= COMPENSATION_BELOW ? r * GRANT_PER_REP : (COMPENSATION_BELOW - r) * COMPENSATION_PER_POINT)}</b></div>
     <div class="row"><span class="grow">🚇 Nuove stazioni ogni mattina</span><b>${r >= MIN_REP_FOR_STATIONS ? 'sì' : `no (serve ${MIN_REP_FOR_STATIONS})`}</b></div>
     <div class="row"><span class="grow">🏛️ Linee a rischio</span><b>${r < SEIZE_BELOW ? 'il sindaco ne prende una stanotte' : `sotto ${SEIZE_BELOW}`}</b></div>
     <div class="btns"><button class="btn" data-action="donate" ${r >= 100 ? 'disabled' : ''}>🤝 Dona ${fmtMoney(game.donationCost())} al Comune (+${DONATION_REP} fiducia)</button></div>

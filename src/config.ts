@@ -52,11 +52,11 @@ export interface LevelInfo {
 }
 
 export const LEVELS: LevelInfo[] = [
-  { population: 0, maxLines: 3, trainCapacity: 6, maxTrains: 5, unlock: 'Inizio: 3 linee, 5 treni per linea, treni da 6 posti' },
-  { population: 200000, maxLines: 4, trainCapacity: 6, maxTrains: 6, unlock: 'Livello 2: quarta linea, 6 treni per linea' },
-  { population: 450000, maxLines: 5, trainCapacity: 8, maxTrains: 8, unlock: 'Livello 3: quinta linea, 8 treni per linea, treni da 8 posti' },
-  { population: 800000, maxLines: 6, trainCapacity: 10, maxTrains: 10, unlock: 'Livello 4: sesta linea, 10 treni per linea, treni da 10 posti' },
-  { population: 1300000, maxLines: 8, trainCapacity: 12, maxTrains: 12, unlock: 'Livello 5: 8 linee, 12 treni per linea, treni da 12 posti' },
+  { population: 0, maxLines: 3, trainCapacity: 8, maxTrains: 5, unlock: 'Inizio: 3 linee, 5 treni per linea, treni da 8 posti' },
+  { population: 200000, maxLines: 4, trainCapacity: 8, maxTrains: 6, unlock: 'Livello 2: quarta linea, 6 treni per linea' },
+  { population: 450000, maxLines: 5, trainCapacity: 10, maxTrains: 8, unlock: 'Livello 3: quinta linea, 8 treni per linea, treni da 10 posti' },
+  { population: 800000, maxLines: 6, trainCapacity: 12, maxTrains: 10, unlock: 'Livello 4: sesta linea, 10 treni per linea, treni da 12 posti' },
+  { population: 1300000, maxLines: 8, trainCapacity: 14, maxTrains: 12, unlock: 'Livello 5: 8 linee, 12 treni per linea, treni da 14 posti' },
 ];
 
 /** Quanti abitanti (o addetti) vale un punto di densità per tipo di zona */
@@ -99,7 +99,7 @@ export function demandProfile(origin: ZoneType, hour: number): Profile {
 
 
 /** passeggeri in attesa oltre i quali parte il conto alla rovescia del sovraffollamento */
-export const OVERCROWD_AT = 14;
+export const OVERCROWD_AT = 18;
 /** minuti di sovraffollamento continuato prima della crisi di quartiere */
 export const OVERCROWD_LIMIT = 120;
 /** giorni perché una stazione nuova arrivi a piena domanda */
@@ -117,12 +117,12 @@ export const costMult = (rep: number) => (rep < 50 ? 1.5 - rep / 100 : 1.25 - re
 /** Sotto questa fiducia il sindaco non apre nuove stazioni. */
 export const MIN_REP_FOR_STATIONS = 30;
 
-/** multa del Comune per ogni crisi da sovraffollamento, moltiplicata per il livello */
-export const CRISIS_FINE = 600;
+/** multa del Comune per ogni crisi da sovraffollamento (al massimo una al giorno per stazione) */
+export const CRISIS_FINE = 400;
 
 /** Sotto questa fiducia il contributo diventa una compensazione che paghi tu al Comune. */
 export const COMPENSATION_BELOW = 25;
-export const COMPENSATION_PER_POINT = 60;
+export const COMPENSATION_PER_POINT = 30;
 /** Sotto questa fiducia il sindaco si prende la linea peggiore. */
 export const SEIZE_BELOW = 10;
 /** Da questa fiducia in su puoi riscattare una linea presa dal Comune. */
