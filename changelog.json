@@ -2,6 +2,15 @@
   {
     "date": "2026-11-02",
     "notes": [
+      "Nuova schermata iniziale: \"Continua\" in grande e la scelta della città subito in vista",
+      "Tutorial guidato in 5 passi alla prima partita: prima linea, passeggeri, treni, prolungamenti e fiducia del sindaco (si può saltare e rivedere dal menu)",
+      "Suggerimenti che compaiono una volta sola al momento giusto: prima richiesta del sindaco, prima stazione piena, primo quartiere scontento",
+      "La scheda Info mostra cosa succede adesso: bilancio di oggi, cosa sistemare con il pulsante Vai e il prossimo obiettivo"
+    ]
+  },
+  {
+    "date": "2026-11-02",
+    "notes": [
       "Mappa: un anello attorno alle stazioni mostra il sovraffollamento (rosso) o il malcontento di chi aspetta il collegamento (arancio)",
       "Le richieste del sindaco hanno il conto alla rovescia sopra la stazione, e una freccia sul bordo quando la stazione è fuori dallo schermo: toccala per andarci",
       "I cantieri appena aperti dal sindaco hanno il badge NUOVA",

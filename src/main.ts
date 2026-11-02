@@ -3,6 +3,7 @@ import { Camera } from './camera';
 import {
   BUYBACK_FROM, COMPENSATION_BELOW, COMPENSATION_PER_POINT, COST, DONATION_REP, GRANT_PER_REP, LEVELS, MIN_REP_FOR_STATIONS, SEIZE_BELOW, OVERCROWD_LIMIT, ZONES, ZONE_TYPES, costMult, fareShare, stationUpkeep, trainUpkeep, MAX_CARS, wagonUpkeep,
 } from './config';
+import { Coach } from './coach';
 import { HOLD_MS, Input } from './input';
 import { Music, type MusicStyle } from './music';
 import { landAt, MAP, MAP_LIST, MAPS, setMap } from './maps';
@@ -32,14 +33,18 @@ let pickMap = false;
 // ---------- impostazioni locali (solo comodità per questo browser) ----------
 const prefs = (() => {
   try {
-    return JSON.parse(localStorage.getItem('ss3000-prefs') ?? '{}') as { volume?: number; style?: MusicStyle; music?: boolean };
+    return JSON.parse(localStorage.getItem('ss3000-prefs') ?? '{}') as {
+      volume?: number; style?: MusicStyle; music?: boolean; tutorialDone?: boolean; tips?: string[];
+    };
   } catch {
     return {};
   }
 })();
 function savePrefs() {
   try {
-    localStorage.setItem('ss3000-prefs', JSON.stringify({ volume: music.volume, style: music.style, music: music.playing }));
+    localStorage.setItem('ss3000-prefs', JSON.stringify({
+      volume: music.volume, style: music.style, music: music.playing, tutorialDone: prefs.tutorialDone, tips: prefs.tips,
+    }));
   } catch {
     /* storage non disponibile: pazienza */
   }
@@ -87,6 +92,8 @@ function frame(now: number) {
   drawTouchOverlay(dpr);
   drawFloaters();
   updateEdgeArrows();
+  coach.update(started);
+  coach.draw(ctx);
   // l'annulla sparisce appena si spende altro (treni, vagoni, ...)
   if (!game.lastBuild && !undoBox.hidden) hideUndo();
   requestAnimationFrame(frame);
@@ -592,7 +599,10 @@ function renderPanel(force = false) {
   const html = tab === 'info' ? infoHtml() : tab === 'lines' ? linesHtml() : tab === 'goals' ? goalsHtml() : logHtml();
   if (!force && html === lastPanel) return;
   lastPanel = html;
+  // i <details> aperti restano aperti anche quando il pannello si aggiorna
+  const openDetails = [...document.querySelectorAll<HTMLDetailsElement>('#panel-body details[open]')].map((d) => d.className);
   $('#panel-body').innerHTML = html;
+  for (const c of openDetails) if (c) $(`#panel-body details.${c}`)?.setAttribute('open', '');
 }
 
 const zoneChip = (t: keyof typeof ZONES, extra = '') =>
@@ -675,7 +685,40 @@ function infoHtml(): string {
       <p>${st ? `Servito dalla stazione <b>${st.name}</b>.` : 'Nessuna stazione entro il raggio pedonale.'}</p>
       <p class="muted">Gli isolati vicini a stazioni ben servite crescono di densità, e i terreni liberi vengono edificati.</p>`;
   }
-  return helpHtml();
+  return nowHtml();
+}
+
+/** scheda Info senza selezione: cosa succede adesso, poi le istruzioni */
+function nowHtml(): string {
+  const s = game.state;
+  const st = s.stats;
+  const problems: string[] = [];
+  for (const r of s.requests) {
+    const sid = r.stationId;
+    problems.push(`<div class="row"><span>🏛️</span><span class="grow">${r.title}<br><small class="muted">⏱ ${hoursLeft(r.deadline)} · +${fmtMoney(r.reward)}</small></span>${sid !== undefined ? `<button class="btn small" data-action="goto" data-id="${sid}">Vai</button>` : ''}</div>`);
+  }
+  const worst = s.stations
+    .map((x) => {
+      const linked = (game.net.linesAt.get(x.id)?.length ?? 0) > 0;
+      return { x, linked, v: linked ? (x.crowd / OVERCROWD_LIMIT) * 100 : x.discontent };
+    })
+    .filter((o) => (o.linked ? o.v > 15 : o.v > 30))
+    .sort((a, b) => b.v - a.v)
+    .slice(0, 4);
+  for (const o of worst) {
+    problems.push(`<div class="row"><span>${o.linked ? '🚨' : '📣'}</span><span class="grow">${o.x.name}<br><small class="muted">${o.linked ? `sovraffollata ${Math.round(o.v)}%` : `malcontento ${Math.round(o.v)}%`}</small></span><button class="btn small" data-action="goto" data-id="${o.x.id}">Vai</button></div>`);
+  }
+  const goal = GOALS.find((g) => !s.goalsDone.includes(g.id));
+  const net = st.incomeToday - st.expensesToday;
+  return `
+    <h3>Adesso</h3>
+    <p>Oggi <b class="${net < 0 ? 'neg' : 'pos'}">${net >= 0 ? '+' : '−'}${fmtMoney(Math.abs(net))}</b> <span class="muted">(incassi ${fmtMoney(st.incomeToday)} · spese ${fmtMoney(st.expensesToday)})</span><br>
+    Passeggeri trasportati: <b>${st.delivered.toLocaleString('it-IT')}</b> · persi: ${st.lost}<br>
+    Abitanti serviti: <b>${game.servedPopulation().toLocaleString('it-IT')}</b></p>
+    <h4>Da sistemare</h4>
+    ${problems.length ? problems.join('') : '<p class="muted">Tutto tranquillo. Ottimo momento per una nuova linea.</p>'}
+    ${goal ? `<h4>Prossimo obiettivo</h4><p>${goal.text} <span class="muted">· +${fmtMoney(goal.reward)}</span></p>` : ''}
+    <details class="help"><summary>Come si gioca</summary>${helpHtml()}</details>`;
 }
 
 function helpHtml(): string {
@@ -752,6 +795,15 @@ $('#panel-body').addEventListener('click', (e) => {
   const id = Number(b.dataset.id);
   switch (b.dataset.action) {
     case 'select-line': input.select({ kind: 'line', id }); break;
+    case 'goto': {
+      const st = game.net.stationById.get(id);
+      if (st) {
+        cam.x = st.x;
+        cam.y = st.y;
+        input.select({ kind: 'station', id });
+      }
+      break;
+    }
     case 'train-add': game.addTrain(id); break;
     case 'train-remove': game.removeTrain(id); break;
     case 'car-add': game.addCar(id); break;
@@ -784,7 +836,7 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => void autosave());
 
-function startWith(state: GameState) {
+function startWith(state: GameState, fresh = false) {
   setMap(state.mapId);
   game.load(state);
   input.select(null);
@@ -797,6 +849,8 @@ function startWith(state: GameState) {
   renderPanel(true);
   updateTopbar();
   void autosave();
+  if (fresh) coach.onNewGame();
+  else coach.stop();
 }
 
 const SLOT_LABEL: Record<storage.SlotId, string> = { auto: 'Automatico', slot1: 'Slot 1', slot2: 'Slot 2', slot3: 'Slot 3' };
@@ -812,6 +866,30 @@ async function openMenu() {
   }
   const bySlot = new Map(saves.map((s) => [s.slot, s]));
   const fmtDate = (t: number) => new Date(t).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
+  const dlg = $<HTMLDialogElement>('#menu');
+  dlg.classList.toggle('home', !started);
+  if (!started) {
+    // schermata iniziale: continua o scegli subito la città; il resto è più in basso
+    const auto = bySlot.get('auto');
+    $('#menu-body').innerHTML = `
+      <h2>Subway<b>Simulator3000</b></h2>
+      <p class="muted">Costruisci la metropolitana della tua città, una linea alla volta.</p>
+      ${auto ? `<button class="continue" data-m="load" data-slot="auto"><span>▶</span><span class="grow"><b>Continua</b><small>${auto.summary}</small></span></button>` : ''}
+      <h4>${auto ? 'Oppure inizia in una nuova città' : 'Scegli la città'}</h4>
+      <div class="maps">${MAP_LIST.map((m) => `<button class="mapcard" data-m="start" data-map="${m.id}"><span>${m.icon}</span><b>${m.city}</b><small>${m.blurb}</small></button>`).join('')}</div>
+      <details class="more"><summary>Salvataggi e impostazioni</summary>
+        ${storage.SLOTS.filter((slot) => slot !== 'auto').map((slot) => {
+          const rec = bySlot.get(slot);
+          return `<div class="slot"><div class="grow"><b>${SLOT_LABEL[slot]}</b><small>${rec ? `${rec.summary} · ${fmtDate(rec.savedAt)}` : 'vuoto'}</small></div>
+            ${rec ? `<button class="btn small" data-m="load" data-slot="${slot}">Carica</button>` : ''}</div>`;
+        }).join('')}
+        <div class="btns"><button class="btn" data-m="import">⬆ Importa file</button></div>
+        ${settingsHtml()}
+      </details>`;
+    if (!dlg.open) dlg.showModal();
+    dlg.onclose = () => (pickMap = false);
+    return;
+  }
   $('#menu-body').innerHTML = `
     <h2>Subway<b>Simulator3000</b></h2>
     <p class="muted">Costruisci una metropolitana, un pezzo alla volta.</p>
@@ -833,6 +911,17 @@ async function openMenu() {
       ${started ? '<button class="btn" data-m="export">⬇ Esporta file</button>' : ''}
       <button class="btn" data-m="import">⬆ Importa file</button>
     </div>
+    ${settingsHtml()}
+    <div class="btns"><button class="btn" data-m="tutorial">🎓 Rivedi il tutorial</button></div>`;
+  if (!dlg.open) dlg.showModal();
+  dlg.onclose = () => {
+    if (started && game.speed === 0) game.speed = prevSpeed || 1;
+    pickMap = false;
+  };
+}
+
+function settingsHtml() {
+  return `
     <h4>Impostazioni</h4>
     <label class="field">Imprevisti
       <select data-m="difficulty">
@@ -846,12 +935,6 @@ async function openMenu() {
       <button class="btn small" data-m="music">${music.playing ? '⏸ Ferma' : '▶ Suona'}</button></label>
     <label class="field">Volume <input type="range" min="0" max="1" step="0.05" value="${music.volume}" data-m="volume"></label>
     <p class="muted" style="font-size:12px">Mappe stilizzate: New York disegnata a mano; Padova, Castelfranco Veneto, Cittadella e Riese Pio X con le posizioni reali di OpenStreetMap (© OpenStreetMap contributors). Musica generata dal vivo nel browser, senza brani protetti da copyright. Salvataggi nel browser (IndexedDB): usa "Esporta file" per una copia di sicurezza o per spostarti su un altro dispositivo.</p>`;
-  const dlg = $<HTMLDialogElement>('#menu');
-  if (!dlg.open) dlg.showModal();
-  dlg.onclose = () => {
-    if (started && game.speed === 0) game.speed = prevSpeed || 1;
-    pickMap = false;
-  };
 }
 
 $('#menu-body').addEventListener('click', async (e) => {
@@ -860,6 +943,10 @@ $('#menu-body').addEventListener('click', async (e) => {
   const slot = b.dataset.slot as storage.SlotId;
   switch (b.dataset.m) {
     case 'resume': $<HTMLDialogElement>('#menu').close(); break;
+    case 'tutorial':
+      $<HTMLDialogElement>('#menu').close();
+      coach.start();
+      break;
     case 'new':
       pickMap = true;
       return openMenu();
@@ -869,7 +956,7 @@ $('#menu-body').addEventListener('click', async (e) => {
     case 'start': {
       pickMap = false;
       const id = b.dataset.map as MapId;
-      startWith(newGame(id));
+      startWith(newGame(id), true);
       toast(`Nuova partita: ${MAPS[id].city} ti aspetta!`, 'good');
       break;
     }
@@ -919,8 +1006,34 @@ $<HTMLInputElement>('#import-file').addEventListener('change', async (e) => {
   }
   (e.target as HTMLInputElement).value = '';
 });
+// ---------- tutorial guidato e suggerimenti ----------
+const coach = new Coach(
+  {
+    game, cam,
+    focusStation: (id) => {
+      const st = game.net.stationById.get(id);
+      if (!st) return;
+      cam.x = st.x;
+      cam.y = st.y;
+      input.select({ kind: 'station', id });
+    },
+    openTab: (t) => {
+      tab = t;
+      setSheet(true);
+      renderPanel(true);
+    },
+    save: (done, seen) => {
+      prefs.tutorialDone = done;
+      prefs.tips = seen;
+      savePrefs();
+    },
+  },
+  !!prefs.tutorialDone,
+  prefs.tips ?? [],
+);
+
 // per i test automatici e il debug dalla console
-(window as unknown as { ss3000: unknown }).ss3000 = { game, cam, input, startWith, newGame, MAP: () => MAP };
+(window as unknown as { ss3000: unknown }).ss3000 = { game, cam, input, startWith, newGame, coach, MAP: () => MAP };
 
 renderPanel(true);
 updateTopbar();
