@@ -6,7 +6,7 @@ import {
 import { HOLD_MS, Input } from './input';
 import { Music, type MusicStyle } from './music';
 import { landAt, MAP, MAP_LIST, MAPS, setMap } from './maps';
-import { render, type Selection } from './render';
+import { render, shortTime, type Selection } from './render';
 import { GOALS, Game } from './sim';
 import * as storage from './storage';
 import type { Difficulty, GameState, MapId } from './types';
@@ -85,11 +85,108 @@ function frame(now: number) {
     selection: input.selection, drag: input.drag, hoverStation: input.hoverStation,
   });
   drawTouchOverlay(dpr);
+  drawFloaters();
+  updateEdgeArrows();
   // l'annulla sparisce appena si spende altro (treni, vagoni, ...)
   if (!game.lastBuild && !undoBox.hidden) hideUndo();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// ---------- "+$" che sale dalla stazione quando un viaggio si conclude ----------
+const FLOAT_MS = 1300;
+const floaters: { id: number; amount: number; t0: number }[] = [];
+game.onFare = (id, amount) => {
+  const now = performance.now();
+  // a velocità alta gli incassi della stessa stazione si sommano in un'unica etichetta
+  const f = floaters.find((x) => x.id === id && now - x.t0 < 450);
+  if (f) f.amount += amount;
+  else if (floaters.length < 40) floaters.push({ id, amount, t0: now });
+};
+function drawFloaters() {
+  const now = performance.now();
+  for (let i = floaters.length - 1; i >= 0; i--) if (now - floaters[i].t0 > FLOAT_MS) floaters.splice(i, 1);
+  if (!floaters.length || cam.zoom < 0.12) return;
+  ctx.font = `700 13px 'Space Grotesk', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 3;
+  for (const f of floaters) {
+    const st = game.net.stationById.get(f.id);
+    if (!st) continue;
+    const p = cam.toScreen(st);
+    const k = (now - f.t0) / FLOAT_MS;
+    const y = p.y - 16 - k * 30;
+    ctx.globalAlpha = 1 - k * k;
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+    ctx.strokeText(`+$${f.amount}`, p.x, y);
+    ctx.fillStyle = '#2e7d32';
+    ctx.fillText(`+$${f.amount}`, p.x, y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- frecce ai bordi per i problemi fuori dallo schermo ----------
+const edgeBox = $('#edge-arrows');
+let edgeKey = '';
+function visibleRect() {
+  const top = $('.topbar').getBoundingClientRect().bottom + 8;
+  const phone = isPhone();
+  const bottom = (phone ? cam.h - sheetVisible : cam.h) - 8;
+  const right = phone || panel.classList.contains('collapsed') ? cam.w - 8 : panel.getBoundingClientRect().left - 8;
+  return { x0: 8, y0: top, x1: right, y1: bottom };
+}
+function updateEdgeArrows() {
+  if (!started) return;
+  const s = game.state;
+  const alerts = new Map<number, { text: string; kind: 'late' | 'req' | 'crowd' | 'angry' }>();
+  for (const st of s.stations) {
+    const linked = (game.net.linesAt.get(st.id)?.length ?? 0) > 0;
+    if (linked && st.crowd / OVERCROWD_LIMIT > 0.4) alerts.set(st.id, { text: '⚠️', kind: 'crowd' });
+    else if (!linked && st.discontent > 60) alerts.set(st.id, { text: '😠', kind: 'angry' });
+  }
+  for (const r of s.requests) {
+    if (r.stationId === undefined) continue;
+    const left = r.deadline - s.time;
+    alerts.set(r.stationId, { text: `⏱ ${shortTime(left)}`, kind: left < 360 ? 'late' : 'req' });
+  }
+  const v = visibleRect();
+  const c = { x: (v.x0 + v.x1) / 2, y: (v.y0 + v.y1) / 2 };
+  const items: { id: number; x: number; y: number; a: number; text: string; kind: string }[] = [];
+  for (const [id, al] of alerts) {
+    const st = game.net.stationById.get(id);
+    if (!st) continue;
+    const p = cam.toScreen(st);
+    if (p.x > v.x0 && p.x < v.x1 && p.y > v.y0 && p.y < v.y1) continue;
+    const dx = p.x - c.x;
+    const dy = p.y - c.y;
+    const hw = (v.x1 - v.x0) / 2 - 30;
+    const hh = (v.y1 - v.y0) / 2 - 22;
+    const t = Math.min(hw / Math.abs(dx || 1e-6), hh / Math.abs(dy || 1e-6));
+    items.push({ id, x: c.x + dx * t, y: c.y + dy * t, a: Math.atan2(dy, dx), ...al });
+  }
+  const key = items.map((i) => `${i.id}:${i.text}:${i.kind}`).join('|');
+  if (key !== edgeKey) {
+    edgeKey = key;
+    edgeBox.innerHTML = items
+      .map((i) => `<button class="edge ${i.kind}" data-id="${i.id}" title="${esc(game.net.stationById.get(i.id)!.name)}"><i class="arr">➤</i><span>${i.text}</span></button>`)
+      .join('');
+  }
+  const els = edgeBox.children;
+  items.forEach((i, k) => {
+    const el = els[k] as HTMLElement;
+    el.style.transform = `translate(${Math.round(i.x)}px, ${Math.round(i.y)}px) translate(-50%, -50%)`;
+    (el.firstElementChild as HTMLElement).style.transform = `rotate(${i.a}rad)`;
+  });
+}
+edgeBox.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('.edge');
+  const st = b && game.net.stationById.get(Number(b.dataset.id));
+  if (!st) return;
+  cam.x = st.x;
+  cam.y = st.y;
+  input.select({ kind: 'station', id: st.id });
+});
 
 /**
  * Aiuti per il dito: l'anello che si riempie mentre si tiene premuto su una stazione

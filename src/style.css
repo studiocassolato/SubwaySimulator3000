@@ -57,6 +57,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #undo { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 13; display: flex; align-items: center; gap: 10px; background: var(--ink); color: white; padding: 6px 6px 6px 16px; border-radius: 24px; box-shadow: var(--shadow); white-space: nowrap; font-weight: 600; animation: in 0.2s ease-out; }
 #undo[hidden] { display: none; }
 #undo .btn { background: white; color: var(--ink); border-color: white; border-radius: 18px; }
+#edge-arrows { position: absolute; inset: 0; pointer-events: none; }
+.edge { position: absolute; left: 0; top: 0; pointer-events: auto; display: flex; align-items: center; gap: 4px; border: 0; border-radius: 16px; padding: 5px 10px 5px 6px; min-height: 32px; font-size: 13px; font-weight: 700; color: white; background: var(--ink); box-shadow: var(--shadow); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.edge .arr { display: inline-block; font-style: normal; font-size: 12px; width: 16px; text-align: center; }
+.edge.late, .edge.crowd { background: var(--bad); }
+.edge.angry { background: #fb8c00; }
 #toasts { position: absolute; top: 74px; right: 370px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; max-width: 340px; }
 .toast { background: var(--paper); border-left: 4px solid var(--accent); padding: 8px 12px; border-radius: 10px; box-shadow: var(--shadow); font-size: 14px; animation: in 0.25s ease-out; }
 .toast.good { border-color: var(--good); }
@@ -147,7 +152,9 @@ select, input[type='range'] { font: inherit; }
   .toast { font-size: 13px; padding: 6px 10px; }
   #undo { top: calc(max(3px, env(safe-area-inset-top)) + 58px); bottom: auto; font-size: 14px; }
   body.undo-on #toasts { top: calc(max(3px, env(safe-area-inset-top)) + 116px); }
-  .toast:nth-child(n + 3) { display: none; }
+  .toast:nth-child(n + 2) { display: none; }
+  .toast { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .edge { min-height: 36px; }
 
   /* il foglio è alto quanto la posizione "pieno"; JS lo trasla per mostrare solo la parte visibile */
   .panel {

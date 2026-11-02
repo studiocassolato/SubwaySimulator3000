@@ -49,6 +49,8 @@ export interface Station {
   discontent: number;
   /** fino a quando la crescita del quartiere è bloccata dopo una crisi */
   frozenUntil?: number;
+  /** minuto in cui il sindaco ha aperto il cantiere (per il badge "NUOVA") */
+  addedAt?: number;
 }
 
 export interface MayorRequest {
