@@ -3,7 +3,7 @@ import { Camera } from './camera';
 import {
   BUYBACK_FROM, COMPENSATION_BELOW, COMPENSATION_PER_POINT, COST, DONATION_REP, GRANT_PER_REP, LEVELS, MIN_REP_FOR_STATIONS, SEIZE_BELOW, OVERCROWD_LIMIT, ZONES, ZONE_TYPES, costMult, fareShare, stationUpkeep, trainUpkeep, MAX_CARS, wagonUpkeep,
 } from './config';
-import { Input } from './input';
+import { HOLD_MS, Input } from './input';
 import { Music, type MusicStyle } from './music';
 import { landAt, MAP, MAP_LIST, MAPS, setMap } from './maps';
 import { render, type Selection } from './render';
@@ -24,6 +24,7 @@ const cam = new Camera();
 const game = new Game(newGame());
 const input = new Input(canvas, cam, game);
 const music = new Music();
+const undoBox = $('#undo');
 let tab: 'info' | 'lines' | 'goals' | 'log' = 'info';
 let started = false;
 let pickMap = false;
@@ -83,9 +84,81 @@ function frame(now: number) {
   render(ctx, game, cam, {
     selection: input.selection, drag: input.drag, hoverStation: input.hoverStation,
   });
+  drawTouchOverlay(dpr);
+  // l'annulla sparisce appena si spende altro (treni, vagoni, ...)
+  if (!game.lastBuild && !undoBox.hidden) hideUndo();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+/**
+ * Aiuti per il dito: l'anello che si riempie mentre si tiene premuto su una stazione
+ * e la lente d'ingrandimento sopra il dito mentre si disegna (il dito copre la stazione).
+ */
+function drawTouchOverlay(dpr: number) {
+  const h = input.holding;
+  if (h) {
+    const st = game.net.stationById.get(h.station);
+    if (st) {
+      const p = cam.toScreen(st);
+      const t = Math.min(1, (performance.now() - h.t0) / HOLD_MS);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 22, -Math.PI / 2, -Math.PI / 2 + t * Math.PI * 2);
+      ctx.strokeStyle = 'rgba(30, 136, 229, 0.9)';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+  }
+  const p = input.pointerScreen;
+  if (!input.drag || !input.touchDraw || !p) return;
+  const R = 54;
+  const Z = 1.8;
+  let cx = Math.min(cam.w - R - 8, Math.max(R + 8, p.x));
+  let cy = p.y - 110;
+  if (cy < R + 70) cy = p.y + 110; // vicino al bordo alto: la lente va sotto il dito
+  cx = Math.round(cx);
+  cy = Math.round(cy);
+  const src = (R / Z) * dpr;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.fillStyle = '#efe9dc';
+  ctx.fill();
+  ctx.clip();
+  ctx.drawImage(canvas, p.x * dpr - src, p.y * dpr - src, src * 2, src * 2, cx - R, cy - R, R * 2, R * 2);
+  ctx.restore();
+  const color = input.drag.color;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = input.hoverStation !== null ? color : 'white';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R + 2, 0, Math.PI * 2);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(20, 30, 50, 0.35)';
+  ctx.stroke();
+  // mirino al centro: è il punto esatto sotto il dito
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(20, 30, 50, 0.7)';
+  ctx.fill();
+  const hov = input.hoverStation !== null ? game.net.stationById.get(input.hoverStation) : undefined;
+  if (hov) {
+    ctx.font = `700 13px 'Space Grotesk', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const w = ctx.measureText(hov.name).width + 18;
+    const ly = cy - R - 16;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(cx - w / 2, ly - 12, w, 24, 12);
+    ctx.fill();
+    ctx.fillStyle = 'white';
+    ctx.fillText(hov.name, cx, ly + 1);
+  }
+}
 
 // ---------- barra superiore ----------
 const fmtMoney = (n: number) => `$${Math.round(n).toLocaleString('it-IT')}`;
@@ -189,6 +262,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === '2') game.speed = 3;
   else if (e.key === '3') game.speed = 8;
   else if (e.key === 'Escape') input.select(null);
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') doUndo();
   else return;
   e.preventDefault();
   updateTopbar();
@@ -272,6 +346,34 @@ input.onDrawStart = () => {
   if (isPhone() && snap !== 'closed') setSnap('closed');
 };
 game.onChange = () => renderPanel();
+
+// ---------- annulla l'ultima costruzione (per qualche secondo, rimborso pieno) ----------
+const UNDO_MS = 8000;
+let undoTimer = 0;
+function hideUndo() {
+  undoBox.hidden = true;
+  document.body.classList.remove('undo-on');
+  clearTimeout(undoTimer);
+}
+function doUndo() {
+  hideUndo();
+  if (game.undoBuild()) {
+    input.select(null);
+    toast('Costruzione annullata, soldi restituiti', 'good');
+  }
+  updateTopbar();
+}
+game.onBuild = (b) => {
+  $('#undo-text').textContent = `${b.label} · $${b.cost.toLocaleString('it-IT')}`;
+  undoBox.hidden = false;
+  document.body.classList.add('undo-on');
+  clearTimeout(undoTimer);
+  undoTimer = window.setTimeout(() => {
+    hideUndo();
+    game.lastBuild = null;
+  }, UNDO_MS);
+};
+$('#undo-btn').addEventListener('click', doUndo);
 // avviso bloccante: il gioco si ferma finché non si preme OK, poi riparte a velocità 1
 game.onAlert = (title, html) => {
   game.speed = 0;

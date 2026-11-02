@@ -2,6 +2,15 @@
   {
     "date": "2026-11-02",
     "notes": [
+      "Disegno col dito: una lente sopra il dito mostra la stazione che stai agganciando",
+      "Per iniziare una linea col dito tieni premuto un attimo sulla stazione: un trascinamento veloce sposta la mappa",
+      "Aggancio più preciso tra stazioni vicine e una leggera vibrazione a ogni fermata aggiunta",
+      "Annulla: per 8 secondi dopo una linea, un prolungamento o una deviazione puoi tornare indietro con rimborso pieno (anche Ctrl+Z)"
+    ]
+  },
+  {
+    "date": "2026-11-02",
+    "notes": [
       "Telefono: barra in alto più leggera, tocca soldi o ▾ per vedere livello, fiducia, soddisfazione e bilancio di oggi",
       "Telefono: le schede sono in basso a portata di pollice e il pannello si trascina a tre altezze (chiuso, metà, pieno)",
       "Il pannello si chiude da solo mentre disegni una linea e si riapre a metà quando tocchi una stazione o una linea",
