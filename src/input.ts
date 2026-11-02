@@ -6,13 +6,25 @@ import { lineHandles, type DragPreview, type Selection } from './render';
 import type { Game } from './sim';
 import type { Vec } from './types';
 
-const SNAP_PX = 26; // raggio di aggancio generoso per il touch
+const SNAP_PX = 26; // raggio di aggancio col mouse
+const SNAP_TOUCH_PX = 34; // col dito si aggancia da più lontano
 const TAP_PX = 8;
+/** col dito una linea parte tenendo premuto un attimo su una stazione: un trascinamento rapido sposta la mappa */
+export const HOLD_MS = 160;
+
+const buzz = (ms: number) => {
+  try {
+    navigator.vibrate?.(ms);
+  } catch {
+    /* vibrazione non disponibile */
+  }
+};
 
 type Mode =
   | { kind: 'none' }
   | { kind: 'pan'; moved: number }
   | { kind: 'pinch'; dist: number; mid: Vec }
+  | { kind: 'hold'; station: number; timer: number }
   | { kind: 'draw'; preview: DragPreview; lineId?: number; atEnd?: boolean; insertIdx?: number };
 
 export class Input {
@@ -24,6 +36,14 @@ export class Input {
   /** chiamata una volta quando il dito inizia davvero a tracciare (non a un semplice tocco) */
   onDrawStart: () => void = () => {};
   private drawNotified = false;
+  /** il disegno in corso è fatto col dito (mostra la lente) */
+  touchDraw = false;
+  /** stazione su cui si sta tenendo premuto per iniziare una linea */
+  holding: { station: number; t0: number } | null = null;
+  /** posizione dello schermo del dito durante il disegno */
+  pointerScreen: Vec | null = null;
+  private lastDir: Vec = { x: 0, y: 0 };
+  private lastP: Vec = { x: 0, y: 0 };
 
   private pointers = new Map<number, Vec>();
   private mode: Mode = { kind: 'none' };
@@ -45,9 +65,9 @@ export class Input {
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
-  stationAt(screen: Vec): number | null {
+  stationAt(screen: Vec, radius = SNAP_PX): number | null {
     let best: number | null = null;
-    let bd = SNAP_PX;
+    let bd = radius;
     for (const st of this.game.state.stations) {
       const p = this.cam.toScreen(st);
       const d = Math.hypot(p.x - screen.x, p.y - screen.y);
@@ -57,6 +77,49 @@ export class Input {
       }
     }
     return best;
+  }
+
+  /**
+   * Aggancio durante il disegno: col dito il raggio è più ampio, si preferisce la stazione
+   * nella direzione del movimento e quella già agganciata resta finché un'altra non è chiaramente più vicina.
+   */
+  private snapStation(p: Vec): number | null {
+    const radius = this.touchDraw ? SNAP_TOUCH_PX : SNAP_PX;
+    const dl = Math.hypot(this.lastDir.x, this.lastDir.y);
+    let best: number | null = null;
+    let bs = Infinity;
+    for (const st of this.game.state.stations) {
+      const s = this.cam.toScreen(st);
+      const d = Math.hypot(s.x - p.x, s.y - p.y);
+      if (d > radius) continue;
+      let score = d;
+      if (dl > 0 && d > 0) {
+        const cos = ((s.x - p.x) * this.lastDir.x + (s.y - p.y) * this.lastDir.y) / (d * dl);
+        score *= 1 - 0.3 * Math.max(0, cos);
+      }
+      if (st.id === this.hoverStation) score *= 0.7;
+      if (score < bs) {
+        bs = score;
+        best = st.id;
+      }
+    }
+    return best;
+  }
+
+  private clearHold() {
+    if (this.mode.kind === 'hold') clearTimeout(this.mode.timer);
+    this.holding = null;
+  }
+
+  private startDraw(st: number, p: Vec): DragPreview {
+    const used = new Set(this.game.state.lines.map((l) => l.color));
+    const color = LINE_COLORS.find((c) => !used.has(c)) ?? '#888';
+    const preview: DragPreview = { chain: [st], pointer: this.cam.toWorld(p), color };
+    this.mode = { kind: 'draw', preview };
+    this.pointerScreen = p;
+    this.lastP = p;
+    this.lastDir = { x: 0, y: 0 };
+    return preview;
   }
 
   private lineAt(world: Vec, tolPx = 12): { lineId: number; seg: number } | null {
@@ -88,7 +151,9 @@ export class Input {
     this.pointers.set(e.pointerId, p);
     if (this.pointers.size === 2) {
       // secondo dito: si passa al pinch e si annulla il disegno
+      this.clearHold();
       this.drag = null;
+      this.pointerScreen = null;
       this.onQuote(null);
       const [a, b] = [...this.pointers.values()];
       this.mode = { kind: 'pinch', dist: Math.hypot(a.x - b.x, a.y - b.y), mid: mid(a, b) };
@@ -97,6 +162,7 @@ export class Input {
     if (this.pointers.size > 2) return;
     this.downAt = p;
     this.drawNotified = false;
+    this.touchDraw = e.pointerType !== 'mouse';
     const w = this.cam.toWorld(p);
 
     const handle = lineHandles(this.game, this.cam).find((h) => {
@@ -110,15 +176,28 @@ export class Input {
         kind: 'draw', lineId: line.id, atEnd: handle.atEnd,
         preview: { chain: [], anchor, pointer: w, color: line.color },
       };
+      this.pointerScreen = p;
+      this.lastP = p;
+      this.lastDir = { x: 0, y: 0 };
       this.selection = { kind: 'line', id: line.id };
       this.onSelect(this.selection);
       return;
     }
     const st = this.stationAt(p);
     if (st !== null && !this.game.stationLocked(st)) {
-      const used = new Set(this.game.state.lines.map((l) => l.color));
-      const color = LINE_COLORS.find((c) => !used.has(c)) ?? '#888';
-      this.mode = { kind: 'draw', preview: { chain: [st], pointer: w, color } };
+      if (!this.touchDraw) {
+        this.startDraw(st, p);
+        return;
+      }
+      // col dito: si aspetta un attimo per distinguere "disegno" da "sposto la mappa"
+      const timer = window.setTimeout(() => {
+        if (this.mode.kind !== 'hold') return;
+        this.holding = null;
+        this.drag = this.startDraw(st, this.pointers.values().next().value ?? p);
+        buzz(8);
+      }, HOLD_MS);
+      this.mode = { kind: 'hold', station: st, timer };
+      this.holding = { station: st, t0: performance.now() };
       return;
     }
     if (this.selection?.kind === 'line') {
@@ -155,6 +234,14 @@ export class Input {
       this.cam.zoomAt(c, d / m.dist);
       m.dist = d;
       m.mid = c;
+    } else if (m.kind === 'hold') {
+      if (Math.hypot(p.x - this.downAt.x, p.y - this.downAt.y) >= TAP_PX) {
+        // trascinamento rapido: è uno spostamento della mappa
+        this.clearHold();
+        this.mode = { kind: 'pan', moved: TAP_PX };
+        this.cam.panBy(p.x - this.downAt.x, p.y - this.downAt.y);
+        this.cam.clamp(MAP.width, MAP.height);
+      }
     } else if (m.kind === 'pan') {
       this.cam.panBy(p.x - prev.x, p.y - prev.y);
       this.cam.clamp(MAP.width, MAP.height);
@@ -172,7 +259,14 @@ export class Input {
     const pv = m.preview;
     pv.pointer = this.cam.toWorld(p);
     this.drag = pv;
-    const found = this.stationAt(p);
+    this.pointerScreen = p;
+    const mv = { x: p.x - this.lastP.x, y: p.y - this.lastP.y };
+    if (Math.hypot(mv.x, mv.y) > 4) {
+      this.lastDir = mv;
+      this.lastP = p;
+    }
+    const chainLen = pv.chain.length;
+    const found = this.snapStation(p);
     // le stazioni delle linee gestite dal Comune non si agganciano
     const st = found !== null && this.game.stationLocked(found) ? null : found;
     this.hoverStation = st;
@@ -190,6 +284,7 @@ export class Input {
     } else if (m.insertIdx !== undefined) {
       pv.chain = [];
     }
+    if (pv.chain.length > chainLen) buzz(12);
     this.updateQuote(m);
   }
 
@@ -220,7 +315,15 @@ export class Input {
     }
     this.mode = { kind: 'none' };
     this.drag = null;
+    this.pointerScreen = null;
     this.onQuote(null);
+    if (this.touchDraw) this.hoverStation = null;
+    if (m.kind === 'hold') {
+      clearTimeout(m.timer);
+      this.holding = null;
+      this.tap(p);
+      return;
+    }
     if (m.kind === 'draw') {
       const pv = m.preview;
       if (m.insertIdx !== undefined && m.lineId !== undefined) {
@@ -239,6 +342,8 @@ export class Input {
   }
 
   private cancel(e: PointerEvent) {
+    this.clearHold();
+    this.pointerScreen = null;
     this.pointers.delete(e.pointerId);
     this.mode = { kind: 'none' };
     this.drag = null;

@@ -44,6 +44,11 @@ export const GOALS: Goal[] = [
   { id: 'deliver-10000', text: 'Trasporta 10.000 passeggeri', reward: 10000, done: (g) => g.state.stats.delivered >= 10000 },
 ];
 
+export type Build =
+  | { kind: 'create'; lineId: number; cost: number; label: string }
+  | { kind: 'extend'; lineId: number; cost: number; label: string; added: number[]; atEnd: boolean }
+  | { kind: 'insert'; lineId: number; cost: number; label: string; stationId: number };
+
 export class Game {
   net: Network;
   /** passeggeri che non trovano un percorso, per stazione (indicatore per il giocatore) */
@@ -52,6 +57,9 @@ export class Game {
   paused = false;
   onNotify: Notify = () => {};
   onChange: () => void = () => {};
+  /** ultima costruzione annullabile (solo finché non si spende altro) */
+  lastBuild: Build | null = null;
+  onBuild: (b: Build) => void = () => {};
   /** avvisi importanti che mettono in pausa il gioco */
   onAlert: (title: string, html: string) => void = () => {};
 
@@ -60,6 +68,7 @@ export class Game {
   }
 
   load(state: GameState) {
+    this.lastBuild = null;
     this.state = state;
     this.net.setState(state);
     this.unmet.clear();
@@ -83,6 +92,51 @@ export class Game {
     }
     this.state.money -= amount;
     this.state.stats.expensesToday += amount;
+    this.lastBuild = null; // qualsiasi altra spesa chiude la possibilità di annullare
+    return true;
+  }
+
+  private recordBuild(b: Build) {
+    this.lastBuild = b;
+    this.onBuild(b);
+  }
+
+  /** Annulla l'ultima costruzione con rimborso pieno. Restituisce false se non è più possibile. */
+  undoBuild(): boolean {
+    const b = this.lastBuild;
+    this.lastBuild = null;
+    if (!b) return false;
+    const line = this.state.lines.find((l) => l.id === b.lineId);
+    if (!line || line.seized) return false;
+    const refund = () => {
+      this.state.money += b.cost;
+      this.state.stats.expensesToday = Math.max(0, this.state.stats.expensesToday - b.cost);
+    };
+    if (b.kind === 'create') {
+      const money = this.state.money;
+      this.deleteLine(line.id, true);
+      this.state.money = money; // niente rimborso parziale dei treni: si rimborsa tutto qui sotto
+      refund();
+      this.log(`${line.name} annullata: rimborsati $${b.cost}`);
+    } else if (b.kind === 'extend') {
+      const n = b.added.length;
+      const ends = b.atEnd ? line.stations.slice(-n) : line.stations.slice(0, n).reverse();
+      if (line.stations.length - n < 2 || ends.some((id, i) => id !== b.added[i])) return false;
+      const before = this.snapshotTrains(line);
+      line.stations = b.atEnd ? line.stations.slice(0, -n) : line.stations.slice(n);
+      this.afterLineChange(line, before);
+      refund();
+      this.log(`Prolungamento di ${line.name} annullato: rimborsati $${b.cost}`);
+    } else {
+      const i = line.stations.indexOf(b.stationId);
+      if (i <= 0 || i >= line.stations.length - 1) return false;
+      const before = this.snapshotTrains(line);
+      line.stations.splice(i, 1);
+      this.afterLineChange(line, before);
+      refund();
+      this.log(`Deviazione di ${line.name} annullata: rimborsati $${b.cost}`);
+    }
+    this.onChange();
     return true;
   }
 
@@ -278,6 +332,7 @@ export class Game {
     this.state.trains.push(this.makeTrain(line));
     this.log(`${line.name} inaugurata (${stations.length} fermate)`, 'good');
     this.onChange();
+    this.recordBuild({ kind: 'create', lineId: line.id, cost: q.cost, label: `${line.name} creata` });
     return line;
   }
 
@@ -300,6 +355,7 @@ export class Game {
     if (atEnd) line.stations.push(...added);
     else line.stations.unshift(...[...added].reverse());
     this.afterLineChange(line, before);
+    this.recordBuild({ kind: 'extend', lineId, cost: q.cost, added: [...added], atEnd, label: `${line.name} prolungata` });
     return true;
   }
 
@@ -313,10 +369,12 @@ export class Game {
     if (!line || line.stations.includes(stationId) || this.stationLocked(stationId)) return false;
     const a = line.stations[idx];
     const b = line.stations[idx + 1];
-    if (!this.spend(this.detourCost(a, stationId, b), 'la deviazione')) return false;
+    const cost = this.detourCost(a, stationId, b);
+    if (!this.spend(cost, 'la deviazione')) return false;
     const before = this.snapshotTrains(line);
     line.stations.splice(idx + 1, 0, stationId);
     this.afterLineChange(line, before);
+    this.recordBuild({ kind: 'insert', lineId, cost, stationId, label: `Deviazione su ${line.name}` });
     return true;
   }
 

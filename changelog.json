@@ -2,6 +2,15 @@
   {
     "date": "2026-11-02",
     "notes": [
+      "Disegno col dito: una lente sopra il dito mostra la stazione che stai agganciando",
+      "Per iniziare una linea col dito tieni premuto un attimo sulla stazione: un trascinamento veloce sposta la mappa",
+      "Aggancio più preciso tra stazioni vicine e una leggera vibrazione a ogni fermata aggiunta",
+      "Annulla: per 8 secondi dopo una linea, un prolungamento o una deviazione puoi tornare indietro con rimborso pieno (anche Ctrl+Z)"
+    ]
+  },
+  {
+    "date": "2026-11-02",
+    "notes": [
       "Castelfranco: Piazza Giorgione ora è subito a nord del castello",
       "Nuove città: Padova, Cittadella e Riese Pio X, con le posizioni reali prese da OpenStreetMap",
       "Castelfranco Veneto corretta con OpenStreetMap: stazione, ospedale, frazioni e mura (ruotate come quelle vere) nel punto giusto",
