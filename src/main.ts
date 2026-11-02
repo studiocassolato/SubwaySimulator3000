@@ -94,7 +94,7 @@ function clock(t: number) {
   const h = Math.floor((t % 1440) / 60);
   const m = Math.floor(t % 60);
   const icon = h >= 21 || h < 6 ? '🌙' : h < 10 ? '🌅' : h < 17 ? '☀️' : '🌇';
-  return `${icon} <small class="hide-sm">Giorno</small><small class="show-sm">G</small> ${day} · ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  return `${icon} <span class="hide-sm"><small>Giorno</small> ${day} · </span>${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 function updateTopbar() {
@@ -115,7 +115,47 @@ function updateTopbar() {
     b.classList.toggle('active', Number(b.dataset.speed) === game.speed);
   });
   $('#btn-music').classList.toggle('off', !music.playing);
+  if (!statsDrop.hidden) renderStatsDrop(pct, pop, next?.population);
 }
+
+// ---------- telefono: tendina con i dettagli che non stanno nella barra ----------
+const statsDrop = $('#stats-drop');
+function renderStatsDrop(pct: number, pop: number, nextPop?: number) {
+  const s = game.state;
+  const html = `
+    <div class="sd-row"><span>📅 Giorno</span><b>${Math.floor(s.time / 1440) + 1}</b></div>
+    <div class="sd-row"><span>⭐ Livello ${s.level}</span><b>${nextPop ? `${pop.toLocaleString('it-IT')} / ${nextPop.toLocaleString('it-IT')} abitanti` : 'massimo'}</b></div>
+    <div class="sd-bar"><i style="width:${Math.max(0, pct)}%"></i></div>
+    <div class="sd-row"><span>🏛️ Fiducia del sindaco</span><b>${Math.round(s.reputation)}</b></div>
+    <div class="sd-row"><span>😊 Soddisfazione</span><b>${Math.round(s.satisfaction)}%</b></div>
+    <div class="sd-row"><span>💰 Oggi</span><b><span class="good">+${fmtMoney(s.stats.incomeToday)}</span> · <span class="bad">−${fmtMoney(s.stats.expensesToday)}</span></b></div>
+    <div class="btns"><button class="btn" data-sd="music">${music.playing ? '🎵 Ferma la musica' : '🎵 Suona la musica'}</button></div>`;
+  if (statsDrop.innerHTML !== html) statsDrop.innerHTML = html;
+}
+function setStatsDrop(open: boolean) {
+  statsDrop.hidden = !open;
+  $('#btn-more').setAttribute('aria-expanded', String(open));
+  $('#btn-more').classList.toggle('active', open);
+  if (open) updateTopbar();
+}
+$('#btn-more').addEventListener('click', (e) => {
+  e.stopPropagation();
+  setStatsDrop(statsDrop.hidden);
+});
+['#clock', '#money', '#reputation'].forEach((sel) =>
+  $(sel).addEventListener('click', () => isPhone() && setStatsDrop(statsDrop.hidden)),
+);
+statsDrop.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).closest('[data-sd="music"]')) {
+    music.toggle();
+    savePrefs();
+    updateTopbar();
+  }
+});
+document.addEventListener('pointerdown', (e) => {
+  const t = e.target as Node;
+  if (!statsDrop.hidden && !statsDrop.contains(t) && !$('.topbar').contains(t)) setStatsDrop(false);
+});
 
 // su telefono la velocità è uno "speed dial": si vede solo quella attiva, un tocco apre le altre
 const isPhone = () => window.matchMedia('(max-width: 760px)').matches;
@@ -222,11 +262,14 @@ input.onQuote = (text) => {
 input.onSelect = (s: Selection) => {
   if (s) {
     tab = 'info';
-    // su telefono il pannello resta chiuso: il pallino sul bottone ℹ️ segnala che c'è qualcosa da vedere
-    if (!isPhone()) setSheet(true);
+    // su telefono il foglio sale a metà per mostrare la stazione o la linea toccata
+    if (isPhone() && snap === 'closed') setSnap('half');
   }
-  $('#btn-info').classList.toggle('dot', !!s && panel.classList.contains('collapsed'));
   renderPanel(true);
+};
+// mentre si disegna una linea la mappa deve essere libera
+input.onDrawStart = () => {
+  if (isPhone() && snap !== 'closed') setSnap('closed');
 };
 game.onChange = () => renderPanel();
 // avviso bloccante: il gioco si ferma finché non si preme OK, poi riparte a velocità 1
@@ -245,23 +288,104 @@ $<HTMLDialogElement>('#alert').addEventListener('close', () => {
 });
 
 // ---------- pannello laterale / foglio dal basso ----------
+// Su telefono il pannello è un foglio con tre altezze: chiuso (si vedono solo le schede), metà e pieno.
+// Si trascina dalla testa (maniglia + schede) e scatta all'altezza più vicina, tenendo conto della velocità.
 const panel = $('#panel');
-function setSheet(open: boolean) {
-  panel.classList.toggle('collapsed', !open);
-  document.body.classList.toggle('sheet-closed', !open);
-  if (open) $('#btn-info').classList.remove('dot');
-}
-$('#btn-info').addEventListener('click', () => setSheet(panel.classList.contains('collapsed')));
-$('#sheet-handle').addEventListener('click', () => setSheet(panel.classList.contains('collapsed')));
-if (window.matchMedia('(max-width: 760px)').matches) setSheet(false);
+const sheetHead = $('#sheet-head');
+type Snap = 'closed' | 'half' | 'full';
+const SNAPS: Snap[] = ['closed', 'half', 'full'];
+let snap: Snap = 'closed';
+let sheetVisible = 0;
+let justDragged = false;
 
+function snapHeight(s: Snap): number {
+  const vh = window.innerHeight;
+  const peek = sheetHead.offsetHeight + (parseFloat(getComputedStyle(panel).paddingBottom) || 0);
+  if (s === 'closed') return peek;
+  if (s === 'half') return Math.max(peek + 120, Math.round(vh * 0.45));
+  return Math.round(vh * 0.88);
+}
+function setVisible(px: number, animate: boolean) {
+  sheetVisible = px;
+  panel.classList.toggle('dragging', !animate);
+  panel.style.transform = `translateY(${panel.offsetHeight - px}px)`;
+  document.body.style.setProperty('--sheet-h', `${px}px`);
+}
+function setSnap(s: Snap) {
+  snap = s;
+  panel.classList.toggle('collapsed', s === 'closed');
+  if (!isPhone()) {
+    panel.style.transform = '';
+    panel.classList.remove('dragging');
+    return;
+  }
+  setVisible(snapHeight(s), true);
+}
+/** compatibilità con il resto del codice: apre (a metà se era chiuso) o chiude il foglio */
+function setSheet(open: boolean) {
+  if (!open) setSnap('closed');
+  else if (snap === 'closed') setSnap('half');
+}
+
+let sheetDrag: { id: number; y0: number; h0: number; moved: boolean; lastY: number; lastT: number; v: number } | null = null;
+sheetHead.addEventListener('pointerdown', (e) => {
+  if (!isPhone()) return;
+  sheetDrag = { id: e.pointerId, y0: e.clientY, h0: sheetVisible, moved: false, lastY: e.clientY, lastT: e.timeStamp, v: 0 };
+});
+// move/up ascoltati sulla finestra: il dito esce subito dalla testa del foglio
+window.addEventListener('pointermove', (e) => {
+  const d = sheetDrag;
+  if (!d || d.id !== e.pointerId) return;
+  const dy = e.clientY - d.y0;
+  if (!d.moved && Math.abs(dy) < 6) return;
+  d.moved = true;
+  const dt = Math.max(1, e.timeStamp - d.lastT);
+  d.v = 0.7 * d.v + 0.3 * ((e.clientY - d.lastY) / dt);
+  d.lastY = e.clientY;
+  d.lastT = e.timeStamp;
+  setVisible(Math.min(snapHeight('full'), Math.max(snapHeight('closed'), d.h0 - dy)), false);
+});
+function endSheetDrag(e: PointerEvent) {
+  const d = sheetDrag;
+  if (!d || d.id !== e.pointerId) return;
+  sheetDrag = null;
+  if (!d.moved) return;
+  justDragged = true;
+  setTimeout(() => (justDragged = false), 0);
+  const cur = SNAPS.indexOf(snap);
+  let target: Snap;
+  if (d.v < -0.4) target = SNAPS.find((s) => snapHeight(s) > sheetVisible + 1) ?? 'full';
+  else if (d.v > 0.4) {
+    const below = SNAPS.filter((s) => snapHeight(s) < sheetVisible - 1);
+    target = below.length ? below[below.length - 1] : 'closed';
+  } else {
+    target = SNAPS.reduce((a, b) => (Math.abs(snapHeight(b) - sheetVisible) < Math.abs(snapHeight(a) - sheetVisible) ? b : a), SNAPS[cur]);
+  }
+  setSnap(target);
+}
+window.addEventListener('pointerup', endSheetDrag);
+window.addEventListener('pointercancel', endSheetDrag);
+
+$('#sheet-handle').addEventListener('click', () => {
+  if (justDragged) return;
+  setSnap(snap === 'closed' ? 'half' : 'closed');
+});
 document.querySelectorAll<HTMLButtonElement>('.tabs button').forEach((b) =>
   b.addEventListener('click', () => {
-    tab = b.dataset.tab as typeof tab;
-    setSheet(true);
+    if (justDragged) return;
+    const t = b.dataset.tab as typeof tab;
+    // su telefono toccare di nuovo la scheda aperta chiude il foglio
+    if (isPhone() && t === tab && snap !== 'closed') setSnap('closed');
+    else {
+      tab = t;
+      if (snap === 'closed') setSnap('half');
+    }
     renderPanel(true);
   }),
 );
+window.matchMedia('(max-width: 760px)').addEventListener('change', () => setSnap(isPhone() ? 'closed' : 'half'));
+window.addEventListener('resize', () => setSnap(snap));
+setSnap(isPhone() ? 'closed' : 'half');
 
 let lastPanel = '';
 function renderPanel(force = false) {
