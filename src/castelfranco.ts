@@ -1,70 +1,77 @@
 import type { MapDef, Seed } from './maps';
-import type { Vec, ZoneType } from './types';
+import { dirPoint, labelAngle, nearestIndex, projector, rect, riverPoly, ring, scalePoly, seed, sideOf, smooth, wedge, type LatLon } from './geo';
+import type { ZoneType } from './types';
+import { CASTELFRANCO_RAILS, CASTELFRANCO_STATION, MUSON } from './veneto';
 
 /**
- * Castelfranco Veneto stilizzata, disegnata a mano (non in scala).
- * Al centro il castello quadrato con il fossato, a ovest il Muson dei Sassi,
- * intorno i borghi e le frazioni. Coordinate di gioco: x verso est, y verso sud.
+ * Castelfranco Veneto. Le posizioni vengono da OpenStreetMap e sono proiettate "a lente"
+ * (vedi geo.ts): le direzioni sono quelle vere, il centro storico è ingrandito
+ * e le frazioni più lontane sono avvicinate. Coordinate di gioco: x verso est, y verso sud.
  */
-const W = 3600;
-const H = 3600;
+const W = 3800;
+const H = 3800;
+const O = { x: 1900, y: 1900 };
+/** centro della cinta murata */
+const CASTLE: LatLon = [45.67135, 11.92605];
+const pr = projector(CASTLE, O, 543, 300);
+const at = (lat: number, lon: number) => pr.pt([lat, lon]);
+const C = at(...CASTLE);
 
-const P = (pts: [number, number][]): Vec[] => pts.map(([x, y]) => ({ x, y }));
-const rect = (x0: number, y0: number, x1: number, y1: number) => P([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]);
+/** le mura vere: un quadrato di circa 230 m di lato, ruotato di una ventina di gradi */
+const WALLS = pr.pts([[45.67271, 11.92692], [45.67078, 11.92813], [45.67001, 11.92524], [45.67197, 11.92402]]);
+const MOAT_IN = scalePoly(WALLS, 1.1);
+const MOAT_OUT = scalePoly(WALLS, 1.42);
 
-/** centro del castello */
-const C = { x: 1900, y: 1700 };
-const MOAT_OUT = 235;
-const MOAT_IN = 175;
-const square = (h: number) => rect(C.x - h, C.y - h, C.x + h, C.y + h);
+const RIVER = smooth(pr.pts(MUSON));
 
-/** Muson dei Sassi: scende da nord a sud a ovest della città, con qualche ansa. */
-const riverX = (y: number) => 1130 + 70 * Math.sin(y / 520) + 30 * Math.sin(y / 170 + 1);
-const RIVER_HALF = 38;
-const riverYs: number[] = [];
-for (let y = -100; y <= H + 100; y += 100) riverYs.push(y);
-const RIVER = [
-  ...riverYs.map((y) => ({ x: riverX(y) - RIVER_HALF, y })),
-  ...[...riverYs].reverse().map((y) => ({ x: riverX(y) + RIVER_HALF, y })),
-];
-
-const S = (name: string, type: ZoneType, x: number, y: number, r: number): Seed => ({ name, type, x, y, r });
+const S = (name: string, type: ZoneType, lat: number, lon: number, r: number): Seed => seed(name, type, at(lat, lon), r);
 
 const SEEDS: Seed[] = [
-  // centro storico: Piazza Giorgione a nord del castello, la stazione a sud
-  S('Castello', 'leisure', 1900, 1700, 120),
-  S('Piazza Giorgione', 'food', 1900, 1390, 130),
-  S('Corso XXIX Aprile', 'food', 2180, 1440, 110),
-  S('Borgo Treviso', 'residential', 2350, 1720, 280),
-  S('Borgo Vicenza', 'residential', 1480, 1700, 240),
-  S('Borgo Padova', 'residential', 1880, 2450, 260),
-  S('Stazione', 'offices', 2060, 2200, 130),
-  S('Centro Direzionale', 'offices', 2480, 2100, 150),
-  S('Villa Revedin', 'leisure', 2440, 1280, 160),
-  S('Liceo Giorgione', 'school', 1580, 1180, 100),
-  S('Istituti Tecnici', 'school', 2640, 1640, 100),
-  S('Ospedale', 'hospital', 1460, 2200, 70),
-  S('Giardini del Sole', 'food', 2740, 2320, 140),
-  S('Stadio', 'leisure', 1600, 2600, 110),
-  S('Piscine', 'leisure', 2050, 1050, 110),
+  // centro storico: Piazza Giorgione è appena a nord del castello, oltre il fossato
+  S('Castello', 'leisure', ...CASTLE, 120),
+  S('Piazza Giorgione', 'food', 45.6733, 11.9256, 130),
+  S('Borgo Padova', 'residential', 45.6683, 11.9248, 200),
+  S('Borgo Asolo', 'residential', 45.6757, 11.9264, 220),
+  S('Stazione', 'offices', ...CASTELFRANCO_STATION, 130),
+  S('Villa Revedin Bolasco', 'leisure', 45.67246, 11.9333, 140),
+  S('Ospedale San Giacomo', 'hospital', 45.67637, 11.93089, 70),
+  S('Liceo Giorgione', 'school', 45.67107, 11.9398, 100),
+  S('Istituto Galilei', 'school', 45.67937, 11.92466, 90),
+  S('Stadio Ostani', 'leisure', 45.66684, 11.92657, 100),
+  S('Palazzetto dello Sport', 'leisure', 45.67196, 11.92134, 90),
+  S('Centro Giorgione', 'food', 45.67051, 11.91589, 110),
+  S('Giardini del Sole', 'food', 45.68168, 11.94229, 140),
+  S('Istituto Agrario', 'school', 45.69174, 11.94681, 100),
   // zone produttive
-  S('Zona Industriale', 'industrial', 2900, 2850, 330),
-  S('Zona Artigianale', 'industrial', 860, 2900, 260),
+  S('Zona Industriale Est', 'industrial', 45.6718, 11.9624, 320),
+  S('Cartiera', 'industrial', 45.65531, 11.9408, 260),
+  S('Zona Industriale Ovest', 'industrial', 45.6845, 11.8909, 280),
   // frazioni
-  S('Salvarosa', 'residential', 2700, 700, 300),
-  S('Villarazzo', 'residential', 3150, 1250, 300),
-  S('Salvatronda', 'residential', 3150, 2100, 300),
-  S('Campigo', 'residential', 2450, 3250, 300),
-  S('Treville', 'residential', 1000, 3250, 300),
-  S("Sant'Andrea", 'residential', 640, 1760, 320),
-  S('San Floriano', 'residential', 1300, 650, 280),
-  S('Bella Venezia', 'residential', 1950, 600, 260),
-  // paesi vicini (direzioni reali: Riese a nord, Godego a nord-ovest, Vedelago a est, Resana a sud)
-  S('Riese Pio X', 'residential', 1750, 130, 260),
-  S('Castello di Godego', 'residential', 520, 260, 260),
-  S('Vedelago', 'residential', 3420, 1650, 260),
-  S('Resana', 'residential', 2050, 3450, 280),
+  S('Salvarosa', 'residential', 45.6812, 11.95147, 280),
+  S('Villarazzo', 'residential', 45.68019, 11.9049, 260),
+  S('Bella Venezia', 'residential', 45.68613, 11.91777, 240),
+  S('Treville', 'residential', 45.65387, 11.90936, 260),
+  S('Campigo', 'residential', 45.65573, 11.96253, 260),
+  S('Salvatronda', 'residential', 45.67448, 11.9766, 260),
+  S('San Floriano', 'residential', 45.69468, 11.97346, 240),
+  S("Sant'Andrea oltre il Muson", 'residential', 45.64799, 11.89702, 260),
+  S('Soranza', 'residential', 45.66296, 11.89148, 220),
+  // paesi vicini
+  S('Vallà', 'residential', 45.70599, 11.93097, 240),
+  S('Riese Pio X', 'residential', 45.72922, 11.917, 240),
+  S('Castello di Godego', 'residential', 45.69238, 11.88104, 240),
+  S('Loria', 'residential', 45.72842, 11.86558, 220),
+  S('San Martino di Lupari', 'residential', 45.64866, 11.85698, 240),
+  S('Resana', 'residential', 45.63457, 11.95543, 240),
+  S('Castelminio', 'residential', 45.64479, 11.98965, 220),
+  S('Fanzolo e Villa Emo', 'leisure', 45.71169, 11.99128, 200),
+  S('Vedelago', 'residential', 45.68676, 12.01885, 240),
 ];
+
+const musonAt = (lat: number) => {
+  const i = nearestIndex(RIVER, at(lat, 11.89));
+  return { name: 'Muson dei Sassi', at: RIVER[i], angle: labelAngle(RIVER, i) };
+};
 
 export const CASTELFRANCO: MapDef = {
   id: 'castelfranco',
@@ -75,38 +82,28 @@ export const CASTELFRANCO: MapDef = {
   height: H,
   // l'ordine conta: vince il primo distretto che contiene il punto
   land: [
-    { name: 'CASTELLO', poly: square(MOAT_IN) },
-    { name: 'OLTRE MUSON', label: { x: 560, y: 2350 }, poly: [{ x: -100, y: -100 }, ...riverYs.map((y) => ({ x: riverX(y), y })), { x: -100, y: H + 100 }] },
-    { name: 'CASTELFRANCO', label: { x: 2050, y: 2780 }, poly: rect(0, 1050, 2800, 2550) },
-    { name: 'SALVAROSA E SAN FLORIANO', label: { x: 2500, y: 380 }, poly: rect(0, -100, W + 100, 1050) },
-    { name: 'CAMPIGO E TREVILLE', label: { x: 2900, y: 3450 }, poly: rect(0, 2550, W + 100, H + 100) },
-    { name: 'VILLARAZZO', label: { x: 3200, y: 1850 }, poly: rect(2800, 1050, W + 100, 2550) },
+    { name: 'CASTELLO', poly: WALLS },
+    { name: 'OLTRE MUSON', label: at(45.668, 11.875), poly: sideOf(RIVER, 'west', W, H) },
+    { name: 'CASTELFRANCO', label: at(45.6605, 11.9345), poly: ring(O, 900, 900, 32) },
+    { name: 'SALVAROSA E SAN FLORIANO', label: dirPoint(O, 300, 1350), poly: wedge(O, 250, 340) },
+    { name: 'SALVATRONDA E CAMPIGO', label: dirPoint(O, 15, 1350), poly: wedge(O, 340, 60) },
+    { name: 'TREVILLE E RESANA', label: dirPoint(O, 118, 1500), poly: wedge(O, 60, 160) },
+    { name: 'VILLARAZZO E BELLA VENEZIA', label: dirPoint(O, 222, 1450), poly: wedge(O, 160, 250) },
   ],
   ground: rect(-100, -100, W + 100, H + 100),
   water: [
-    { poly: RIVER },
-    { poly: square(MOAT_OUT), holes: [square(MOAT_IN)] },
+    { poly: riverPoly(RIVER, 36) },
+    { poly: MOAT_OUT, holes: [MOAT_IN] },
   ],
-  waterLabels: [
-    { name: 'Muson dei Sassi', at: { x: riverX(1150) + 2, y: 1150 }, angle: -1.5 },
-    { name: 'Muson dei Sassi', at: { x: riverX(2700) + 2, y: 2700 }, angle: -1.5 },
-  ],
+  waterLabels: [musonAt(45.715), musonAt(45.63)],
   extraLabels: [],
-  parks: [rect(2320, 1160, 2580, 1400)],
-  walls: square(MOAT_IN - 8),
-  rails: [
-    // Vicenza – Treviso, che passa a sud del centro
-    P([[-100, 2120], [700, 2140], [1300, 2170], [1800, 2200], [2060, 2250], [2600, 2320], [3200, 2380], [W + 100, 2400]]),
-    // verso Bassano
-    P([[2060, 2250], [1700, 2080], [1450, 1700], [1300, 1100], [1050, 400], [850, -100]]),
-    // verso Padova
-    P([[2060, 2250], [2000, 2700], [1900, 3200], [1820, H + 100]]),
-  ],
+  parks: [ring(at(45.67419, 11.93433), 80, 60, 12)],
+  walls: WALLS,
+  rails: CASTELFRANCO_RAILS.map((r) => smooth(pr.pts(r))),
   seeds: SEEDS,
-  cores: P([[1900, 1800], [2060, 2200]]),
+  cores: [C, at(...CASTELFRANCO_STATION)],
   denseArea: 'CASTELLO',
-  focus: { x: 1950, y: 1900 },
+  focus: { x: C.x + 80, y: C.y + 120 },
   focusSize: { w: 1600, h: 1900 },
   welcome: 'Benvenuto a Castelfranco Veneto! Il sindaco ha approvato le prime stazioni attorno al castello: collegale con le linee.',
 };
-

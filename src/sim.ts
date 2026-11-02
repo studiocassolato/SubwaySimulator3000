@@ -166,7 +166,8 @@ export class Game {
     const order = siteOrder();
     while (s.nextSite < order.length) {
       const site = order[s.nextSite++];
-      if (s.stations.some((st) => Math.hypot(st.x - site.x, st.y - site.y) < 120)) continue;
+      // (anche per nome: i salvataggi fatti prima che la mappa cambiasse hanno le stazioni nei punti vecchi)
+      if (s.stations.some((st) => st.name === site.name || Math.hypot(st.x - site.x, st.y - site.y) < 120)) continue;
       const st = makeStation(this.id(), site);
       s.stations.push(st);
       this.net.rebuild();

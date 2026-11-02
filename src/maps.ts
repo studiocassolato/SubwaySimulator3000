@@ -1,5 +1,8 @@
 import { CASTELFRANCO } from './castelfranco';
+import { CITTADELLA } from './cittadella';
 import { NYC } from './nyc';
+import { PADOVA } from './padova';
+import { RIESE } from './riese';
 import type { MapId, Vec, ZoneType } from './types';
 
 /** Un'area di terraferma: dà il nome al distretto (usato nel pannello e nell'obiettivo dei 3 distretti). */
@@ -58,8 +61,8 @@ export interface MapDef {
   welcome: string;
 }
 
-export const MAPS: Record<MapId, MapDef> = { nyc: NYC, castelfranco: CASTELFRANCO };
-export const MAP_LIST: MapDef[] = [NYC, CASTELFRANCO];
+export const MAPS: Record<MapId, MapDef> = { nyc: NYC, castelfranco: CASTELFRANCO, riese: RIESE, cittadella: CITTADELLA, padova: PADOVA };
+export const MAP_LIST: MapDef[] = [NYC, PADOVA, CASTELFRANCO, CITTADELLA, RIESE];
 
 /** Mappa attiva: cambia quando si inizia o si carica una partita. */
 export let MAP: MapDef = NYC;
