@@ -2,6 +2,17 @@
   {
     "date": "2026-11-02",
     "notes": [
+      "Mappa: un anello attorno alle stazioni mostra il sovraffollamento (rosso) o il malcontento di chi aspetta il collegamento (arancio)",
+      "Le richieste del sindaco hanno il conto alla rovescia sopra la stazione, e una freccia sul bordo quando la stazione è fuori dallo schermo: toccala per andarci",
+      "I cantieri appena aperti dal sindaco hanno il badge NUOVA",
+      "I nomi delle stazioni non si sovrappongono più e restano interi ai bordi dello schermo",
+      "Un \"+$\" verde sale dalla stazione a ogni viaggio completato",
+      "Sul telefono si vede una notizia alla volta, su una riga"
+    ]
+  },
+  {
+    "date": "2026-11-02",
+    "notes": [
       "Disegno col dito: una lente sopra il dito mostra la stazione che stai agganciando",
       "Per iniziare una linea col dito tieni premuto un attimo sulla stazione: un trascinamento veloce sposta la mappa",
       "Aggancio più preciso tra stazioni vicine e una leggera vibrazione a ogni fermata aggiunta",

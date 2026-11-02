@@ -337,37 +337,31 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
 
   // stazioni
   const closed = new Set(state.events.filter((e) => e.kind === 'works').map((e) => e.stationId));
-  const requested = new Set(state.requests.map((q) => q.stationId));
+  const requests = new Map(state.requests.filter((q) => q.stationId !== undefined).map((q) => [q.stationId!, q]));
+  const labels: LabelTask[] = [];
+  const obstacles: Rect[] = [];
+  const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 140);
   for (const st of state.stations) {
     if (st.x < view.x0 || st.x > view.x1 || st.y < view.y0 || st.y > view.y1) continue;
     const r = px(opts.hoverStation === st.id ? 12 : 9);
     const linked = (net.linesAt.get(st.id)?.length ?? 0) > 0;
     const sel = opts.selection?.kind === 'station' && opts.selection.id === st.id;
-    if (linked && st.crowd > 0) {
-      // conto alla rovescia del sovraffollamento: l'arco si chiude verso la crisi
-      const f = Math.min(1, st.crowd / OVERCROWD_LIMIT);
+    // anello di stato: rosso = sovraffollamento verso la crisi, arancio = malcontento di chi aspetta la stazione
+    const f = linked ? Math.min(1, st.crowd / OVERCROWD_LIMIT) : st.discontent > 1 ? Math.min(1, st.discontent / 100) : 0;
+    if (f > 0) {
+      const hot = linked || f > 0.75;
+      const ringR = r + px(7);
       ctx.beginPath();
-      ctx.arc(st.x, st.y, r + px(7), 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(229,57,53,0.18)';
+      ctx.arc(st.x, st.y, ringR, 0, Math.PI * 2);
+      ctx.strokeStyle = hot ? 'rgba(229,57,53,0.18)' : 'rgba(251,140,0,0.2)';
       ctx.lineWidth = px(5);
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(st.x, st.y, r + px(7), -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2);
-      ctx.strokeStyle = f > 0.7 ? `rgba(229,57,53,${0.6 + 0.4 * Math.sin(performance.now() / 120)})` : '#e53935';
+      ctx.arc(st.x, st.y, ringR, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2);
+      ctx.strokeStyle = f > 0.7 ? `rgba(229,57,53,${pulse})` : hot ? '#e53935' : '#fb8c00';
+      ctx.lineCap = 'round';
       ctx.stroke();
-    }
-    if (!linked && st.discontent > 1) {
-      // barra del malcontento sotto le stazioni ancora da collegare
-      const w = px(30);
-      const f = Math.min(1, st.discontent / 100);
-      ctx.fillStyle = 'rgba(31,42,55,0.15)';
-      ctx.fillRect(st.x - w / 2, st.y - r - px(10), w, px(4));
-      ctx.fillStyle = f > 0.75 ? '#e53935' : '#fb8c00';
-      ctx.fillRect(st.x - w / 2, st.y - r - px(10), w * f, px(4));
-    }
-    if (requested.has(st.id)) {
-      ctx.font = `${px(16)}px ${FONT}`;
-      ctx.fillText('📌', st.x + r + px(4), st.y - r - px(6));
+      ctx.lineCap = 'butt';
     }
     ctx.beginPath();
     ctx.arc(st.x, st.y, r, 0, Math.PI * 2);
@@ -378,6 +372,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
     if (!linked) ctx.setLineDash([px(3), px(3)]);
     ctx.stroke();
     ctx.setLineDash([]);
+    obstacles.push({ x0: st.x - r - px(3), y0: st.y - r - px(3), x1: st.x + r + px(3), y1: st.y + r + px(3) });
     if (closed.has(st.id)) {
       ctx.font = `${px(13)}px ${FONT}`;
       ctx.fillText('🚧', st.x, st.y - px(20));
@@ -391,6 +386,10 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
       ctx.fillStyle = ZONES[p.dest].color;
       ctx.fill();
     });
+    if (st.waiting.length) {
+      const rows = Math.min(3, Math.ceil(Math.min(18, st.waiting.length) / 6));
+      obstacles.push({ x0: st.x + r + px(3), y0: st.y - px(8), x1: st.x + r + px(48), y1: st.y - px(2) + rows * px(6) });
+    }
     if (st.waiting.length > 18) {
       ctx.font = `700 ${px(9)}px ${FONT}`;
       ctx.fillStyle = COLORS.ink;
@@ -398,17 +397,81 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, o
       ctx.fillText(`+${st.waiting.length - 18}`, st.x + r + px(42), st.y + px(1));
       ctx.textAlign = 'center';
     }
-    if (z > 0.22 || sel) {
-      ctx.font = `600 ${px(11)}px ${FONT}`;
-      ctx.lineWidth = px(3);
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-      ctx.strokeText(st.name, st.x, st.y + r + px(11));
-      ctx.fillStyle = COLORS.ink;
-      ctx.fillText(st.name, st.x, st.y + r + px(11));
+    // badge sopra la stazione: conto alla rovescia del sindaco, oppure "NUOVA" per i cantieri appena aperti
+    const req = requests.get(st.id);
+    const isNew = !linked && st.addedAt !== undefined && state.time - st.addedAt < 1440;
+    if (req || isNew) {
+      const left = req ? req.deadline - state.time : 0;
+      const late = req ? left < 360 : false;
+      const text = req ? `⏱ ${shortTime(left)}` : 'NUOVA';
+      ctx.font = `700 ${px(10)}px ${FONT}`;
+      const w = ctx.measureText(text).width + px(12);
+      const h = px(16);
+      const by = st.y - r - px(11) - h / 2;
+      roundRect(ctx, st.x - w / 2, by - h / 2, w, h, h / 2);
+      ctx.fillStyle = req ? (late ? `rgba(198,40,40,${0.75 + 0.25 * pulse})` : COLORS.ink) : '#1e88e5';
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText(text, st.x, by + px(0.5));
+      obstacles.push({ x0: st.x - w / 2, y0: by - h / 2, x1: st.x + w / 2, y1: by + h / 2 });
     }
+    if (z > 0.22 || sel) labels.push({ st, r, priority: sel ? 3 : req ? 2 : linked ? 1 : 0, waiting: st.waiting.length > 0 });
+  }
+
+  // etichette: si prova sotto, sopra, a sinistra e a destra e si sceglie il posto libero,
+  // poi si tengono dentro lo schermo così i nomi vicino ai bordi restano interi
+  ctx.font = `600 ${px(11)}px ${FONT}`;
+  ctx.lineWidth = px(3);
+  const vis = { x0: cam.x - cam.w / 2 / z + px(4), x1: cam.x + cam.w / 2 / z - px(4) };
+  const placed: Rect[] = [];
+  labels.sort((a, b) => b.priority - a.priority);
+  for (const { st, r, waiting } of labels) {
+    const w = ctx.measureText(st.name).width + px(4);
+    const h = px(13);
+    const cands: Vec[] = [
+      { x: st.x, y: st.y + r + px(11) },
+      { x: st.x, y: st.y - r - px(11) },
+      { x: st.x - r - px(5) - w / 2, y: st.y },
+    ];
+    if (!waiting) cands.push({ x: st.x + r + px(5) + w / 2, y: st.y });
+    let best = cands[0];
+    let bestOverlap = Infinity;
+    for (const c0 of cands) {
+      const c = { x: Math.min(vis.x1 - w / 2, Math.max(vis.x0 + w / 2, c0.x)), y: c0.y };
+      const rect = { x0: c.x - w / 2, y0: c.y - h / 2, x1: c.x + w / 2, y1: c.y + h / 2 };
+      let ov = 0;
+      for (const o of placed) ov += overlap(rect, o);
+      for (const o of obstacles) ov += overlap(rect, o);
+      if (ov < bestOverlap - 1e-9) {
+        bestOverlap = ov;
+        best = c;
+        if (ov === 0) break;
+      }
+    }
+    placed.push({ x0: best.x - w / 2, y0: best.y - h / 2, x1: best.x + w / 2, y1: best.y + h / 2 });
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.strokeText(st.name, best.x, best.y);
+    ctx.fillStyle = COLORS.ink;
+    ctx.fillText(st.name, best.x, best.y);
   }
 
   ctx.restore();
+}
+
+interface Rect { x0: number; y0: number; x1: number; y1: number }
+interface LabelTask { st: { x: number; y: number; name: string }; r: number; priority: number; waiting: boolean }
+
+function overlap(a: Rect, b: Rect): number {
+  const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+  const h = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+/** minuti di gioco in forma breve: "1g 4h" oppure "5h20" */
+export function shortTime(m: number): string {
+  m = Math.max(0, m);
+  if (m >= 1440) return `${Math.floor(m / 1440)}g ${Math.floor((m % 1440) / 60)}h`;
+  return `${Math.floor(m / 60)}h${String(Math.floor(m % 60)).padStart(2, '0')}`;
 }
 
 export function isNight(time: number) {

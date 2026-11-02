@@ -60,6 +60,8 @@ export class Game {
   /** ultima costruzione annullabile (solo finché non si spende altro) */
   lastBuild: Build | null = null;
   onBuild: (b: Build) => void = () => {};
+  /** un viaggio si è concluso in questa stazione (per il "+$" che sale dalla mappa) */
+  onFare: (stationId: number, amount: number) => void = () => {};
   /** avvisi importanti che mettono in pausa il gioco */
   onAlert: (title: string, html: string) => void = () => {};
 
@@ -169,6 +171,7 @@ export class Game {
       // (anche per nome: i salvataggi fatti prima che la mappa cambiasse hanno le stazioni nei punti vecchi)
       if (s.stations.some((st) => st.name === site.name || Math.hypot(st.x - site.x, st.y - site.y) < 120)) continue;
       const st = makeStation(this.id(), site);
+      st.addedAt = s.time;
       s.stations.push(st);
       this.net.rebuild();
       this.log(`🏛️ Il sindaco ha aperto il cantiere di una nuova stazione: ${st.name}`, 'good');
@@ -684,6 +687,7 @@ export class Game {
         const fare = Math.round((FARE_BASE + FARE_PER_HOP * p.hops) * fareShare(s.reputation));
         s.money += fare;
         s.stats.incomeToday += fare;
+        this.onFare(st.id, fare);
         s.stats.delivered++;
         st.served++;
         for (const r of s.requests) if (r.kind === 'deliver' && r.zone === p.dest) r.progress++;
