@@ -7,7 +7,7 @@ export type ZoneType =
   | 'school'
   | 'leisure';
 
-export type MapId = 'nyc' | 'castelfranco';
+export type MapId = 'nyc' | 'castelfranco' | 'riese' | 'cittadella' | 'padova';
 
 export interface Vec {
   x: number;

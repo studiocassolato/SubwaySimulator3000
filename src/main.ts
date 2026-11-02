@@ -646,7 +646,7 @@ async function openMenu() {
       </select>
       <button class="btn small" data-m="music">${music.playing ? '⏸ Ferma' : '▶ Suona'}</button></label>
     <label class="field">Volume <input type="range" min="0" max="1" step="0.05" value="${music.volume}" data-m="volume"></label>
-    <p class="muted" style="font-size:12px">Mappe di New York e Castelfranco Veneto stilizzate, disegnate a mano. Musica generata dal vivo nel browser, senza brani protetti da copyright. Salvataggi nel browser (IndexedDB): usa "Esporta file" per una copia di sicurezza o per spostarti su un altro dispositivo.</p>`;
+    <p class="muted" style="font-size:12px">Mappe stilizzate: New York disegnata a mano; Padova, Castelfranco Veneto, Cittadella e Riese Pio X con le posizioni reali di OpenStreetMap (© OpenStreetMap contributors). Musica generata dal vivo nel browser, senza brani protetti da copyright. Salvataggi nel browser (IndexedDB): usa "Esporta file" per una copia di sicurezza o per spostarti su un altro dispositivo.</p>`;
   const dlg = $<HTMLDialogElement>('#menu');
   if (!dlg.open) dlg.showModal();
   dlg.onclose = () => {
