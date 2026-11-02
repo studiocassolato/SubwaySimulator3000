@@ -27,9 +27,10 @@
           <button data-speed="3" title="Veloce (2)">⏩</button>
           <button data-speed="8" title="Velocissimo (3)">⏭</button>
         </div></div>
-        <button id="btn-info" class="icon show-sm" title="Pannello informazioni">ℹ️</button>
-        <button id="btn-music" class="icon" title="Musica">🎵</button>
+        <button id="btn-music" class="icon hide-sm" title="Musica">🎵</button>
+        <button id="btn-more" class="icon show-sm" title="Dettagli" aria-expanded="false">▾</button>
       </header>
+      <div id="stats-drop" hidden></div>
 
       <div id="requests"></div>
       <div id="quote" hidden></div>
@@ -42,13 +43,15 @@
       </div>
 
       <aside class="panel" id="panel">
-        <div class="sheet-handle" id="sheet-handle"></div>
-        <nav class="tabs">
-          <button data-tab="info" class="active">Info</button>
-          <button data-tab="lines">Linee</button>
-          <button data-tab="goals">Obiettivi</button>
-          <button data-tab="log">Notizie</button>
-        </nav>
+        <div class="sheet-head" id="sheet-head">
+          <div class="sheet-handle" id="sheet-handle"></div>
+          <nav class="tabs">
+            <button data-tab="info" class="active"><span class="ti">📍</span><span>Info</span></button>
+            <button data-tab="lines"><span class="ti">🚇</span><span>Linee</span></button>
+            <button data-tab="goals"><span class="ti">🎯</span><span>Obiettivi</span></button>
+            <button data-tab="log"><span class="ti">📰</span><span>Notizie</span></button>
+          </nav>
+        </div>
         <div class="panel-body" id="panel-body"></div>
       </aside>
 
