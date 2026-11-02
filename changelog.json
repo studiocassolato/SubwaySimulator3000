@@ -4,7 +4,17 @@
     "notes": [
       "Nuove città: Padova, Cittadella e Riese Pio X, con le posizioni reali prese da OpenStreetMap",
       "Castelfranco Veneto corretta con OpenStreetMap: stazione, ospedale, frazioni e mura (ruotate come quelle vere) nel punto giusto",
-      "Per vedere la Castelfranco corretta inizia una nuova partita: i salvataggi vecchi tengono le stazioni dove erano"
+      "Per vedere la Castelfranco corretta inizia una nuova partita: i salvataggi vecchi tengono le stazioni dove erano",
+      "Telefono: barra in alto più leggera, tocca soldi o ▾ per vedere livello, fiducia, soddisfazione e bilancio di oggi",
+      "Telefono: le schede sono in basso a portata di pollice e il pannello si trascina a tre altezze (chiuso, metà, pieno)",
+      "Il pannello si chiude da solo mentre disegni una linea e si riapre a metà quando tocchi una stazione o una linea",
+      "Pulsanti più grandi e comodi da toccare"
+    ]
+  },
+  {
+    "date": "2026-10-31",
+    "notes": [
+      "Via di mezzo: ai livelli alti treni e vagoni costano di più di manutenzione e le crisi costano di più"
     ]
   },
   {

@@ -21,6 +21,9 @@ export class Input {
   hoverStation: number | null = null;
   onSelect: (s: Selection) => void = () => {};
   onQuote: (text: string | null) => void = () => {};
+  /** chiamata una volta quando il dito inizia davvero a tracciare (non a un semplice tocco) */
+  onDrawStart: () => void = () => {};
+  private drawNotified = false;
 
   private pointers = new Map<number, Vec>();
   private mode: Mode = { kind: 'none' };
@@ -93,6 +96,7 @@ export class Input {
     }
     if (this.pointers.size > 2) return;
     this.downAt = p;
+    this.drawNotified = false;
     const w = this.cam.toWorld(p);
 
     const handle = lineHandles(this.game, this.cam).find((h) => {
@@ -156,6 +160,10 @@ export class Input {
       this.cam.clamp(MAP.width, MAP.height);
       m.moved += Math.hypot(p.x - prev.x, p.y - prev.y);
     } else if (m.kind === 'draw') {
+      if (!this.drawNotified && Math.hypot(p.x - this.downAt.x, p.y - this.downAt.y) >= TAP_PX) {
+        this.drawNotified = true;
+        this.onDrawStart();
+      }
       this.updateDraw(m, p);
     }
   }
