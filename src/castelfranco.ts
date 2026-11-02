@@ -27,9 +27,9 @@ const RIVER = smooth(pr.pts(MUSON));
 const S = (name: string, type: ZoneType, lat: number, lon: number, r: number): Seed => seed(name, type, at(lat, lon), r);
 
 const SEEDS: Seed[] = [
-  // centro storico: la Torre civica apre a est, su Piazza Giorgione
+  // centro storico: Piazza Giorgione è appena a nord del castello, oltre il fossato
   S('Castello', 'leisure', ...CASTLE, 120),
-  S('Piazza Giorgione', 'food', 45.6709, 11.929, 130),
+  S('Piazza Giorgione', 'food', 45.6733, 11.9256, 130),
   S('Borgo Padova', 'residential', 45.6683, 11.9248, 200),
   S('Borgo Asolo', 'residential', 45.6757, 11.9264, 220),
   S('Stazione', 'offices', ...CASTELFRANCO_STATION, 130),
